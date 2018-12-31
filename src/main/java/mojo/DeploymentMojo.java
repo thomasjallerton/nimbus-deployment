@@ -6,26 +6,28 @@ import com.amazonaws.services.cloudformation.AmazonCloudFormation;
 import com.amazonaws.services.cloudformation.AmazonCloudFormationClientBuilder;
 import com.amazonaws.services.cloudformation.model.*;
 import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
+import com.fasterxml.jackson.core.JsonParseException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugin.logging.Log;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
+import persisted.NimbusState;
 import services.AwsService;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.List;
 
 @Mojo(name = "deploy")
 public class DeploymentMojo extends AbstractMojo {
 
-    Log logger;
+    private Log logger;
+    private NimbusState persisted;
 
     @Parameter(property = "region", defaultValue = "eu-west-1")
     private String region;
@@ -38,13 +40,14 @@ public class DeploymentMojo extends AbstractMojo {
     public void execute() throws MojoExecutionException, MojoFailureException {
         logger = getLog();
         awsService = new AwsService(logger);
+        getPersisted();
 
         AmazonCloudFormation client = AmazonCloudFormationClientBuilder.standard()
                 .withRegion(region)
                 .build();
 
         String projectName = "nimbus-project";
-        String templateText = getTemplateText(".nimbus/cloudformation-stack-create.json");
+        String templateText = getFileText(".nimbus/cloudformation-stack-create.json");
         CreateStackRequest createStackRequest = new CreateStackRequest()
                 .withStackName(projectName)
                 .withCapabilities("CAPABILITY_NAMED_IAM")
@@ -67,10 +70,10 @@ public class DeploymentMojo extends AbstractMojo {
         updateStack(client);
     }
 
-    private String getTemplateText(final String templatePath) {
+    private String getFileText(final String path) {
 
         try {
-            byte[] encoded = Files.readAllBytes(Paths.get(templatePath));
+            byte[] encoded = Files.readAllBytes(Paths.get(path));
             return new String(encoded);
         } catch (IOException e) {
             logger.error(e);
@@ -81,14 +84,14 @@ public class DeploymentMojo extends AbstractMojo {
 
     private void uploadToS3(String bucketName) {
         try {
-
             //Upload to S3
             AmazonS3 s3Client = AmazonS3ClientBuilder.standard()
                     .withRegion(region)
                     .build();
 
             File lambdaFile = new File(lambdaPath);
-            s3Client.putObject(bucketName, "nimbus/projectname/lambdacode", lambdaFile);
+            s3Client.putObject(bucketName, "nimbus/projectname/" +
+                    persisted.getCompilationTimeStamp() + "/lambdacode", lambdaFile);
 
             logger.info("Uploaded lambda file");
 
@@ -105,7 +108,7 @@ public class DeploymentMojo extends AbstractMojo {
 
     private void updateStack(AmazonCloudFormation client) {
         String projectName = "nimbus-project";
-        String templateText = getTemplateText(".nimbus/cloudformation-stack-update.json");
+        String templateText = getFileText(".nimbus/cloudformation-stack-update.json");
         UpdateStackRequest updateStackRequest = new UpdateStackRequest()
                 .withStackName(projectName)
                 .withCapabilities("CAPABILITY_NAMED_IAM")
@@ -114,5 +117,17 @@ public class DeploymentMojo extends AbstractMojo {
         client.updateStack(updateStackRequest);
 
         logger.info("Updating stack");
+    }
+
+    private void getPersisted() {
+        String stateText = getFileText(".nimbus/nimbus-state.json");
+        ObjectMapper mapper = new ObjectMapper();
+
+        try {
+            persisted = mapper.readValue(stateText, NimbusState.class);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
     }
 }
