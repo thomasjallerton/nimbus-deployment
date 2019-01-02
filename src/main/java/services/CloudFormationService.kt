@@ -2,10 +2,8 @@ package services
 
 import com.amazonaws.services.cloudformation.AmazonCloudFormation
 import com.amazonaws.services.cloudformation.AmazonCloudFormationClientBuilder
-import com.amazonaws.services.cloudformation.model.AlreadyExistsException
-import com.amazonaws.services.cloudformation.model.CreateStackRequest
-import com.amazonaws.services.cloudformation.model.ListExportsRequest
-import com.amazonaws.services.cloudformation.model.UpdateStackRequest
+import com.amazonaws.services.cloudformation.model.*
+import configuration.STACK_CREATE_FILE
 import configuration.STACK_UPDATE_FILE
 import org.apache.maven.plugin.logging.Log
 
@@ -59,7 +57,7 @@ class CloudFormationService(private val logger: Log, private val region: String)
     }
 
     fun createStack(projectName: String): Boolean {
-        val templateText = fileService.getFileText(".nimbus/cloudformation-stack-create.json")
+        val templateText = fileService.getFileText(STACK_CREATE_FILE)
         val createStackRequest = CreateStackRequest()
                 .withStackName(projectName)
                 .withCapabilities("CAPABILITY_NAMED_IAM")
@@ -74,6 +72,19 @@ class CloudFormationService(private val logger: Log, private val region: String)
             logger.error(e)
         }
         return false
+    }
+
+    fun deleteStack(projectName: String): Boolean {
+        val deleteStackRequest = DeleteStackRequest()
+                .withStackName(projectName)
+
+        return try {
+            client.deleteStack(deleteStackRequest)
+            true
+        } catch (e: java.lang.Exception) {
+            logger.error(e)
+            false
+        }
     }
 
     data class FindExportResponse(val successful: Boolean, val result: String)

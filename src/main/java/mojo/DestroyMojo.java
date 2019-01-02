@@ -2,9 +2,6 @@ package mojo;
 
 import com.amazonaws.AmazonServiceException;
 import com.amazonaws.SdkClientException;
-import com.amazonaws.services.cloudformation.AmazonCloudFormation;
-import com.amazonaws.services.cloudformation.AmazonCloudFormationClientBuilder;
-import com.amazonaws.services.cloudformation.model.DeleteStackRequest;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import com.amazonaws.services.s3.model.*;
@@ -14,8 +11,10 @@ import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugin.logging.Log;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
+import persisted.NimbusState;
 import services.CloudFormationService;
 import services.CloudFormationService.FindExportResponse;
+import services.NimbusStateService;
 
 import java.util.Iterator;
 
@@ -29,22 +28,23 @@ public class DestroyMojo extends AbstractMojo {
     @Parameter(property = "region", defaultValue = "eu-west-1")
     private String region;
 
-    private CloudFormationService cloudFormationService;
+    private NimbusState nimbusState;
+
+    public DestroyMojo() {
+        super();
+        logger = getLog();
+        nimbusState = new NimbusStateService(logger).getNimbusState();
+    }
 
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
-        logger = getLog();
-        cloudFormationService = new CloudFormationService(logger, region);
-
-        AmazonCloudFormation client = AmazonCloudFormationClientBuilder.standard()
-                .withRegion(region)
-                .build();
+        CloudFormationService cloudFormationService = new CloudFormationService(logger, region);
 
         FindExportResponse bucketName = cloudFormationService.findExport(
-                "project" + DEPLOYMENT_BUCKET_NAME, 10);
+                 nimbusState.getProjectName() + "-" + DEPLOYMENT_BUCKET_NAME, 10);
 
         if (!bucketName.getSuccessful()) {
-            return;
+            throw new MojoExecutionException("Unable to find S3 Bucket, does stack exist?");
         }
 
         logger.info("Found S3 bucket, about to empty");
@@ -52,12 +52,7 @@ public class DestroyMojo extends AbstractMojo {
 
         logger.info("Emptied S3 bucket");
 
-        String projectName = "nimbus-project";
-        DeleteStackRequest deleteStackRequest = new DeleteStackRequest()
-                .withStackName(projectName);
-
-        client.deleteStack(deleteStackRequest);
-
+        cloudFormationService.deleteStack(nimbusState.getProjectName());
         logger.info("Deleted stack");
 
     }

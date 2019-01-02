@@ -22,7 +22,7 @@ class S3Service(
                     .build()
 
             val lambdaFile = File(jarPath)
-            s3Client.putObject(bucketName, "nimbus/projectname/" +
+            s3Client.putObject(bucketName, "nimbus/${config.projectName}/" +
                     config.compilationTimeStamp + "/lambdacode", lambdaFile)
 
             logger.info("Uploaded lambda file")
