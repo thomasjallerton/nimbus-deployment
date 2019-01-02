@@ -9,6 +9,8 @@ import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 import persisted.NimbusState;
 import services.CloudFormationService;
+import services.CloudFormationService.ContinueResponse;
+import services.CloudFormationService.CreateStackResponse;
 import services.CloudFormationService.FindExportResponse;
 import services.FileService;
 import services.NimbusStateService;
@@ -36,20 +38,38 @@ public class DeploymentMojo extends AbstractMojo {
 
     public void execute() throws MojoExecutionException, MojoFailureException {
         CloudFormationService cloudFormationService = new CloudFormationService(logger, region);
-        S3Service s3Service = new S3Service(region, lambdaPath, nimbusState, logger);
+        S3Service s3Service = new S3Service(region, nimbusState, logger);
 
         //Try to create stack
-        boolean createSuccessful = cloudFormationService.createStack(nimbusState.getProjectName());
-        if (!createSuccessful) return;
+        CreateStackResponse createSuccessful = cloudFormationService.createStack(nimbusState.getProjectName());
+        if (!createSuccessful.getSuccessful()) throw new MojoFailureException("Unable to create stack");
+
+        if (createSuccessful.getAlreadyExists()) {
+            logger.info("Stack already exists, proceeding to update");
+        } else {
+            logger.info("Creating stack");
+            logger.info("Polling stack create progress");
+            cloudFormationService.pollStackStatus(nimbusState.getProjectName());
+            logger.info("Stack created");
+        }
+
 
         FindExportResponse bucketName = cloudFormationService.findExport(
-                nimbusState.getProjectName() + "-" + DEPLOYMENT_BUCKET_NAME, 15);
+                nimbusState.getProjectName() + "-" + DEPLOYMENT_BUCKET_NAME);
 
         if (!bucketName.getSuccessful()) return;
 
-        boolean uploadSuccessful = s3Service.uploadToS3(bucketName.getResult());
+        boolean uploadSuccessful = s3Service.uploadToS3(bucketName.getResult(), lambdaPath);
         if (!uploadSuccessful) return;
 
-        cloudFormationService.updateStack(nimbusState.getProjectName());
+        boolean updating = cloudFormationService.updateStack(nimbusState.getProjectName());
+
+        if (!updating) throw new MojoFailureException("Unable to update stack");
+
+        logger.info("Updating stack");
+
+        cloudFormationService.pollStackStatus(nimbusState.getProjectName());
+
+        logger.info("Updated stack successfully, deployment complete");
     }
 }

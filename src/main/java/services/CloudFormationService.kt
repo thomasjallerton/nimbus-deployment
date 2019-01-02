@@ -5,6 +5,7 @@ import com.amazonaws.services.cloudformation.AmazonCloudFormationClientBuilder
 import com.amazonaws.services.cloudformation.model.*
 import configuration.STACK_CREATE_FILE
 import configuration.STACK_UPDATE_FILE
+import org.apache.maven.plugin.MojoFailureException
 import org.apache.maven.plugin.logging.Log
 
 class CloudFormationService(private val logger: Log, private val region: String) {
@@ -14,49 +15,47 @@ class CloudFormationService(private val logger: Log, private val region: String)
 
     private val fileService: FileService = FileService(logger)
 
-    fun findExport(exportName: String, maxRetries: Int = 15): FindExportResponse {
+    fun findExport(exportName: String): FindExportResponse {
         val listExportsRequest = ListExportsRequest()
 
         try {
+            val exportsResults = client.listExports(listExportsRequest)
+            val exports = exportsResults.exports
 
-            for (i in 1..maxRetries) {
-
-
-                val exportsResults = client.listExports(listExportsRequest)
-                val exports = exportsResults.exports
-
-                for (export in exports) {
-                    if (export.name == exportName) {
-                        println()
-                        return FindExportResponse(true, export.value)
-                    }
+            for (export in exports) {
+                if (export.name == exportName) {
+                    return FindExportResponse(true, export.value)
                 }
-
-                Thread.sleep(3000)
-                print("*")
             }
+
         } catch (e: InterruptedException) {
-            logger.error(e)
+            logger.error(e.localizedMessage)
         } catch (e: Exception) {
-            logger.error(e)
+            logger.error(e.localizedMessage)
         }
-        print("Unable to find deployment bucket")
         return FindExportResponse(false, "")
     }
 
-    fun updateStack(projectName: String) {
+    data class FindExportResponse(val successful: Boolean, val result: String)
+
+
+    fun updateStack(projectName: String): Boolean {
         val templateText = fileService.getFileText(STACK_UPDATE_FILE)
         val updateStackRequest = UpdateStackRequest()
                 .withStackName(projectName)
                 .withCapabilities("CAPABILITY_NAMED_IAM")
                 .withTemplateBody(templateText)
 
-        client.updateStack(updateStackRequest)
-
-        logger.info("Updating stack")
+        return try {
+            client.updateStack(updateStackRequest)
+            true
+        } catch (e: Exception) {
+            logger.error(e.localizedMessage)
+            false
+        }
     }
 
-    fun createStack(projectName: String): Boolean {
+    fun createStack(projectName: String): CreateStackResponse {
         val templateText = fileService.getFileText(STACK_CREATE_FILE)
         val createStackRequest = CreateStackRequest()
                 .withStackName(projectName)
@@ -64,15 +63,16 @@ class CloudFormationService(private val logger: Log, private val region: String)
                 .withTemplateBody(templateText)
         try {
             client.createStack(createStackRequest)
-            logger.info("Creating Stack")
-            return true
+            return CreateStackResponse(true, false)
         } catch (e: AlreadyExistsException) {
-            logger.info("Stack already exists, proceeding to update")
+            return CreateStackResponse(true, true)
         } catch (e: java.lang.Exception) {
-            logger.error(e)
+            logger.error(e.localizedMessage)
         }
-        return false
+        return CreateStackResponse(false, false)
     }
+
+    data class CreateStackResponse(val successful: Boolean, val alreadyExists: Boolean)
 
     fun deleteStack(projectName: String): Boolean {
         val deleteStackRequest = DeleteStackRequest()
@@ -82,10 +82,101 @@ class CloudFormationService(private val logger: Log, private val region: String)
             client.deleteStack(deleteStackRequest)
             true
         } catch (e: java.lang.Exception) {
-            logger.error(e)
+            logger.error(e.localizedMessage)
             false
         }
     }
 
-    data class FindExportResponse(val successful: Boolean, val result: String)
+    fun getStackStatus(projectName: String): String {
+        val describeStackRequest = DescribeStacksRequest()
+                .withStackName(projectName)
+        try {
+            val response = client.describeStacks(describeStackRequest)
+            val stacks = response.stacks
+
+            if (stacks.size == 1) {
+                return stacks[0].stackStatus
+            }
+        } catch (e: java.lang.Exception) {
+            if (!e.localizedMessage.contains("does not exist")) {
+                logger.error(e.localizedMessage)
+            }
+        }
+        return "STACK_NOT_FOUND"
+    }
+
+    fun getStackErrorReason(projectName: String): String {
+        val describeStackRequest = DescribeStackEventsRequest()
+                .withStackName(projectName)
+
+        val response = client.describeStackEvents(describeStackRequest)
+        val events = response.stackEvents
+
+        for (event in events) {
+            if (isErrorStatus(event.resourceStatus)) {
+                return event.resourceStatusReason
+            }
+        }
+        return "Couldn't find error, look at CloudFormation stack log"
+    }
+
+    fun isErrorStatus(stackStatus: String): Boolean {
+        return when (stackStatus) {
+            "CREATE_FAILED" -> true
+            "DELETE_FAILED" -> true
+            "ROLLBACK_FAILED" -> true
+            "UPDATE_ROLLBACK_FAILED" -> true
+            "UPDATE_FAILED" -> true
+            else -> false
+        }
+    }
+
+    fun canContinue(stackStatus: String): ContinueResponse {
+        return when (stackStatus) {
+            "CREATE_COMPLETE" -> ContinueResponse(true, false)
+            "CREATE_FAILED" -> ContinueResponse(true, true)
+            "CREATE_IN_PROGRESS" -> ContinueResponse(false, false)
+            "DELETE_COMPLETE" -> ContinueResponse(true, false)
+            "DELETE_FAILED" -> ContinueResponse(true, true)
+            "DELETE_IN_PROGRESS" -> ContinueResponse(false, false)
+            "REVIEW_IN_PROGRESS" -> ContinueResponse(false, false)
+            "ROLLBACK_COMPLETE" -> ContinueResponse(true, false)
+            "ROLLBACK_FAILED" -> ContinueResponse(true, true)
+            "ROLLBACK_IN_PROGRESS" -> ContinueResponse(false, false)
+            "UPDATE_COMPLETE" -> ContinueResponse(true, false)
+            "UPDATE_COMPLETE_CLEANUP_IN_PROGRESS" -> ContinueResponse(false, false)
+            "UPDATE_IN_PROGRESS" -> ContinueResponse(false, false)
+            "UPDATE_ROLLBACK_COMPLETE" -> ContinueResponse(true, true)
+            "UPDATE_ROLLBACK_COMPLETE_CLEANUP_IN_PROGRESS" -> ContinueResponse(false, false)
+            "UPDATE_ROLLBACK_FAILED" -> ContinueResponse(true, true)
+            "UPDATE_ROLLBACK_IN_PROGRESS" -> ContinueResponse(false, false)
+            "STACK_NOT_FOUND" -> ContinueResponse(true, false)
+            else -> ContinueResponse(false, false)
+        }
+    }
+
+    data class ContinueResponse(val canContinue: Boolean, val needErrorMessage: Boolean)
+
+    @Throws(MojoFailureException::class)
+    fun pollStackStatus(projectName: String) {
+        val status = getStackStatus(projectName)
+        val continueResponse = canContinue(status)
+
+        if (continueResponse.canContinue) {
+            if (continueResponse.needErrorMessage) {
+                val errorMessage = getStackErrorReason(projectName)
+                throw MojoFailureException(errorMessage)
+            }
+            println()
+        } else {
+            try {
+                Thread.sleep(2000)
+            } catch (e: InterruptedException) {
+                e.printStackTrace()
+            }
+
+            print("*")
+            pollStackStatus(projectName)
+        }
+    }
 }
