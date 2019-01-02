@@ -14,9 +14,12 @@ import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugin.logging.Log;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
-import services.AwsService;
+import services.CloudFormationService;
+import services.CloudFormationService.FindExportResponse;
 
 import java.util.Iterator;
+
+import static configuration.ConfigurationKt.DEPLOYMENT_BUCKET_NAME;
 
 @Mojo(name = "destroy-stack")
 public class DestroyMojo extends AbstractMojo {
@@ -26,21 +29,26 @@ public class DestroyMojo extends AbstractMojo {
     @Parameter(property = "region", defaultValue = "eu-west-1")
     private String region;
 
-    private AwsService awsService;
+    private CloudFormationService cloudFormationService;
 
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
         logger = getLog();
-        awsService = new AwsService(logger);
+        cloudFormationService = new CloudFormationService(logger, region);
 
         AmazonCloudFormation client = AmazonCloudFormationClientBuilder.standard()
                 .withRegion(region)
                 .build();
 
-        String bucketName = awsService.findBucketName(client, 10);
+        FindExportResponse bucketName = cloudFormationService.findExport(
+                "project" + DEPLOYMENT_BUCKET_NAME, 10);
+
+        if (!bucketName.getSuccessful()) {
+            return;
+        }
 
         logger.info("Found S3 bucket, about to empty");
-        deleteBucket(bucketName);
+        deleteBucket(bucketName.getResult());
 
         logger.info("Emptied S3 bucket");
 
