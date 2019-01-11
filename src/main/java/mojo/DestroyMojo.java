@@ -1,10 +1,5 @@
 package mojo;
 
-import com.amazonaws.AmazonServiceException;
-import com.amazonaws.SdkClientException;
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.AmazonS3ClientBuilder;
-import com.amazonaws.services.s3.model.*;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
@@ -16,8 +11,6 @@ import services.CloudFormationService;
 import services.CloudFormationService.FindExportResponse;
 import services.NimbusStateService;
 import services.S3Service;
-
-import java.util.Iterator;
 
 import static configuration.ConfigurationKt.DEPLOYMENT_BUCKET_NAME;
 

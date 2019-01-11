@@ -57,10 +57,11 @@ public class DeploymentMojo extends AbstractMojo {
         FindExportResponse bucketName = cloudFormationService.findExport(
                 nimbusState.getProjectName() + "-" + DEPLOYMENT_BUCKET_NAME);
 
-        if (!bucketName.getSuccessful()) return;
+        if (!bucketName.getSuccessful()) throw new MojoFailureException("Unable to find deployment bucket");
 
+        logger.info("Uploading lambda file");
         boolean uploadSuccessful = s3Service.uploadToS3(bucketName.getResult(), lambdaPath);
-        if (!uploadSuccessful) return;
+        if (!uploadSuccessful) throw new MojoFailureException("Failed uploading lambda code");
 
         boolean updating = cloudFormationService.updateStack(nimbusState.getProjectName());
 
