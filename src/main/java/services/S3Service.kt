@@ -7,9 +7,10 @@ import com.amazonaws.services.s3.model.ListVersionsRequest
 import org.apache.maven.plugin.logging.Log
 import persisted.NimbusState
 import java.io.File
+import java.net.URL
 
 class S3Service(
-        private val region: String,
+        region: String,
         private val config: NimbusState,
         private val logger: Log
 ) {
@@ -18,16 +19,15 @@ class S3Service(
             .withRegion(region)
             .build()
 
-    fun uploadToS3(bucketName: String, jarPath: String): Boolean {
+    fun uploadToS3(bucketName: String, filePath: String, s3Path: String): Boolean {
         try {
             //Upload to S3
 
 
-            val lambdaFile = File(jarPath)
+            val lambdaFile = File(filePath)
             s3Client.putObject(bucketName, "nimbus/${config.projectName}/" +
-                    config.compilationTimeStamp + "/lambdacode", lambdaFile)
-
-            logger.info("Uploaded lambda file")
+                    config.compilationTimeStamp + "/" + s3Path, lambdaFile)
+            logger.info("Uploaded file")
             return true
         } catch (e: AmazonServiceException) {
             // The call was transmitted successfully, but Amazon S3 couldn't process
@@ -39,6 +39,10 @@ class S3Service(
             e.printStackTrace()
         }
         return false
+    }
+
+    fun getUrl(bucketName: String, s3Path: String): URL {
+        return s3Client.getUrl(bucketName, "nimbus/${config.projectName}/" + config.compilationTimeStamp + "/" + s3Path)
     }
 
     fun deleteBucket(bucketName: String) {

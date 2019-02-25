@@ -7,6 +7,7 @@ import configuration.STACK_CREATE_FILE
 import configuration.STACK_UPDATE_FILE
 import org.apache.maven.plugin.MojoFailureException
 import org.apache.maven.plugin.logging.Log
+import java.net.URL
 
 class CloudFormationService(private val logger: Log, private val region: String) {
     private val client: AmazonCloudFormation = AmazonCloudFormationClientBuilder.standard()
@@ -39,13 +40,11 @@ class CloudFormationService(private val logger: Log, private val region: String)
     data class FindExportResponse(val successful: Boolean, val result: String)
 
 
-    fun updateStack(projectName: String): Boolean {
-        val templateText = fileService.getFileText(STACK_UPDATE_FILE)
+    fun updateStack(projectName: String, url: URL): Boolean {
         val updateStackRequest = UpdateStackRequest()
                 .withStackName(projectName)
                 .withCapabilities("CAPABILITY_NAMED_IAM")
-                .withTemplateBody(templateText)
-
+                .withTemplateURL(url.toString())
         return try {
             client.updateStack(updateStackRequest)
             true
@@ -158,7 +157,7 @@ class CloudFormationService(private val logger: Log, private val region: String)
     data class ContinueResponse(val canContinue: Boolean, val needErrorMessage: Boolean)
 
     @Throws(MojoFailureException::class)
-    fun pollStackStatus(projectName: String) {
+    fun pollStackStatus(projectName: String, count: Int = 0) {
         val status = getStackStatus(projectName)
         val continueResponse = canContinue(status)
 
@@ -175,8 +174,13 @@ class CloudFormationService(private val logger: Log, private val region: String)
                 e.printStackTrace()
             }
 
-            print("*")
-            pollStackStatus(projectName)
+            if (count < 50) {
+                print("*")
+                pollStackStatus(projectName, count + 1)
+            } else {
+                println("*")
+                pollStackStatus(projectName, 0)
+            }
         }
     }
 }

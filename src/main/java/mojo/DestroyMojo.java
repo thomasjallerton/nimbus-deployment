@@ -51,7 +51,7 @@ public class DestroyMojo extends AbstractMojo {
         if (!deleting) throw new MojoFailureException("Unable to delete stack");
         logger.info("Deleting stack");
 
-        cloudFormationService.pollStackStatus(nimbusState.getProjectName());
+        cloudFormationService.pollStackStatus(nimbusState.getProjectName(), 0);
 
         logger.info("Deleted stack successfully");
 

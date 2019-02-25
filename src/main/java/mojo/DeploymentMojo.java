@@ -16,7 +16,10 @@ import services.FileService;
 import services.NimbusStateService;
 import services.S3Service;
 
+import java.net.URL;
+
 import static configuration.ConfigurationKt.DEPLOYMENT_BUCKET_NAME;
+import static configuration.ConfigurationKt.STACK_UPDATE_FILE;
 
 @Mojo(name = "deploy")
 public class DeploymentMojo extends AbstractMojo {
@@ -49,7 +52,7 @@ public class DeploymentMojo extends AbstractMojo {
         } else {
             logger.info("Creating stack");
             logger.info("Polling stack create progress");
-            cloudFormationService.pollStackStatus(nimbusState.getProjectName());
+            cloudFormationService.pollStackStatus(nimbusState.getProjectName(), 0);
             logger.info("Stack created");
         }
 
@@ -60,16 +63,22 @@ public class DeploymentMojo extends AbstractMojo {
         if (!bucketName.getSuccessful()) throw new MojoFailureException("Unable to find deployment bucket");
 
         logger.info("Uploading lambda file");
-        boolean uploadSuccessful = s3Service.uploadToS3(bucketName.getResult(), lambdaPath);
+        boolean uploadSuccessful = s3Service.uploadToS3(bucketName.getResult(), lambdaPath, "lambdacode");
         if (!uploadSuccessful) throw new MojoFailureException("Failed uploading lambda code");
 
-        boolean updating = cloudFormationService.updateStack(nimbusState.getProjectName());
+        logger.info("Uploading cloudformation file");
+        boolean cloudFormationUploadSuccessful = s3Service.uploadToS3(bucketName.getResult(), STACK_UPDATE_FILE, "update-template");
+        if (!cloudFormationUploadSuccessful) throw new MojoFailureException("Failed uploading cloudformation update code");
+
+        URL cloudformationUrl = s3Service.getUrl(bucketName.getResult(), "update-template");
+
+        boolean updating = cloudFormationService.updateStack(nimbusState.getProjectName(), cloudformationUrl);
 
         if (!updating) throw new MojoFailureException("Unable to update stack");
 
         logger.info("Updating stack");
 
-        cloudFormationService.pollStackStatus(nimbusState.getProjectName());
+        cloudFormationService.pollStackStatus(nimbusState.getProjectName(), 0);
 
         logger.info("Updated stack successfully, deployment complete");
     }
