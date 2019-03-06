@@ -112,7 +112,9 @@ class CloudFormationService(private val logger: Log, private val region: String)
         val events = response.stackEvents
 
         for (event in events) {
-            if (isErrorStatus(event.resourceStatus) && !event.resourceStatusReason.contains("Resource update cancelled")) {
+            if (isErrorStatus(event.resourceStatus)
+                    && !event.resourceStatusReason.contains("Resource update cancelled")
+                    && !event.resourceStatusReason.contains("Resource creation cancelled")) {
                 return event.resourceStatusReason
             }
         }
