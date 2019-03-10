@@ -4,7 +4,6 @@ import com.amazonaws.services.cloudformation.AmazonCloudFormation
 import com.amazonaws.services.cloudformation.AmazonCloudFormationClientBuilder
 import com.amazonaws.services.cloudformation.model.*
 import configuration.STACK_CREATE_FILE
-import configuration.STACK_UPDATE_FILE
 import org.apache.maven.plugin.MojoFailureException
 import org.apache.maven.plugin.logging.Log
 import java.net.URL
@@ -54,8 +53,8 @@ class CloudFormationService(private val logger: Log, region: String) {
         }
     }
 
-    fun createStack(projectName: String): CreateStackResponse {
-        val templateText = fileService.getFileText(STACK_CREATE_FILE)
+    fun createStack(projectName: String, stage: String): CreateStackResponse {
+        val templateText = fileService.getFileText("$STACK_CREATE_FILE-$stage.json")
         val createStackRequest = CreateStackRequest()
                 .withStackName(projectName)
                 .withCapabilities("CAPABILITY_NAMED_IAM")
@@ -73,9 +72,9 @@ class CloudFormationService(private val logger: Log, region: String) {
 
     data class CreateStackResponse(val successful: Boolean, val alreadyExists: Boolean)
 
-    fun deleteStack(projectName: String): Boolean {
+    fun deleteStack(stackName: String): Boolean {
         val deleteStackRequest = DeleteStackRequest()
-                .withStackName(projectName)
+                .withStackName(stackName)
 
         return try {
             client.deleteStack(deleteStackRequest)
@@ -86,9 +85,9 @@ class CloudFormationService(private val logger: Log, region: String) {
         }
     }
 
-    fun getStackStatus(projectName: String): String {
+    fun getStackStatus(stackName: String): String {
         val describeStackRequest = DescribeStacksRequest()
-                .withStackName(projectName)
+                .withStackName(stackName)
         try {
             val response = client.describeStacks(describeStackRequest)
             val stacks = response.stacks
@@ -104,9 +103,9 @@ class CloudFormationService(private val logger: Log, region: String) {
         return "STACK_NOT_FOUND"
     }
 
-    fun getStackErrorReason(projectName: String): String {
+    fun getStackErrorReason(stackName: String): String {
         val describeStackRequest = DescribeStackEventsRequest()
-                .withStackName(projectName)
+                .withStackName(stackName)
 
         val response = client.describeStackEvents(describeStackRequest)
         val events = response.stackEvents

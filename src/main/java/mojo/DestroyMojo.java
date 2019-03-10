@@ -22,6 +22,9 @@ public class DestroyMojo extends AbstractMojo {
     @Parameter(property = "region", defaultValue = "eu-west-1")
     private String region;
 
+    @Parameter(property = "stage", defaultValue = "dev")
+    private String stage;
+
     private NimbusState nimbusState;
 
     public DestroyMojo() {
@@ -34,9 +37,10 @@ public class DestroyMojo extends AbstractMojo {
     public void execute() throws MojoExecutionException, MojoFailureException {
         CloudFormationService cloudFormationService = new CloudFormationService(logger, region);
         S3Service s3Service = new S3Service(region, nimbusState, logger);
+        String stackName = nimbusState.getProjectName() + "-" + stage;
 
         FindExportResponse bucketName = cloudFormationService.findExport(
-                 nimbusState.getProjectName() + "-" + DEPLOYMENT_BUCKET_NAME);
+                 nimbusState.getProjectName() + "-" + stage + "-" + DEPLOYMENT_BUCKET_NAME);
 
         if (!bucketName.getSuccessful()) {
             throw new MojoExecutionException("Unable to find S3 Bucket, does stack exist?");
@@ -47,11 +51,11 @@ public class DestroyMojo extends AbstractMojo {
 
         logger.info("Emptied S3 bucket");
 
-        boolean deleting = cloudFormationService.deleteStack(nimbusState.getProjectName());
+        boolean deleting = cloudFormationService.deleteStack(stackName);
         if (!deleting) throw new MojoFailureException("Unable to delete stack");
         logger.info("Deleting stack");
 
-        cloudFormationService.pollStackStatus(nimbusState.getProjectName(), 0);
+        cloudFormationService.pollStackStatus(stackName, 0);
 
         logger.info("Deleted stack successfully");
 
