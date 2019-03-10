@@ -1,6 +1,7 @@
 package services
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import configuration.NIMBUS_STATE
 import org.apache.maven.plugin.logging.Log
 import persisted.NimbusState
 
@@ -8,7 +9,7 @@ class NimbusStateService(private val logger: Log) {
 
     fun getNimbusState(): NimbusState {
         val fileService = FileService(logger)
-        val stateText = fileService.getFileText(".nimbus/nimbus-state.json")
+        val stateText = fileService.getFileText(NIMBUS_STATE)
         val mapper = ObjectMapper()
 
         try {

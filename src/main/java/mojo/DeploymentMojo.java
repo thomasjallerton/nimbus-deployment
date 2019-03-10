@@ -8,13 +8,10 @@ import org.apache.maven.plugin.logging.Log;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 import persisted.NimbusState;
-import services.CloudFormationService;
+import services.*;
 import services.CloudFormationService.ContinueResponse;
 import services.CloudFormationService.CreateStackResponse;
 import services.CloudFormationService.FindExportResponse;
-import services.FileService;
-import services.NimbusStateService;
-import services.S3Service;
 
 import java.net.URL;
 
@@ -81,5 +78,15 @@ public class DeploymentMojo extends AbstractMojo {
         cloudFormationService.pollStackStatus(nimbusState.getProjectName(), 0);
 
         logger.info("Updated stack successfully, deployment complete");
+
+        if (nimbusState.getAfterDeployments().size() > 0) {
+            logger.info("Starting after deployment script");
+
+            LambdaService lambdaClient = new LambdaService(logger, region);
+
+            for (String lambda : nimbusState.getAfterDeployments()) {
+                lambdaClient.invokeNoArgs(lambda);
+            }
+        }
     }
 }

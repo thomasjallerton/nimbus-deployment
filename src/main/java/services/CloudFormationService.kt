@@ -9,7 +9,7 @@ import org.apache.maven.plugin.MojoFailureException
 import org.apache.maven.plugin.logging.Log
 import java.net.URL
 
-class CloudFormationService(private val logger: Log, private val region: String) {
+class CloudFormationService(private val logger: Log, region: String) {
     private val client: AmazonCloudFormation = AmazonCloudFormationClientBuilder.standard()
             .withRegion(region)
             .build()
