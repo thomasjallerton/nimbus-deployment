@@ -15,6 +15,7 @@ import services.NimbusStateService;
 import services.S3Service;
 
 import java.net.URL;
+import java.util.List;
 
 import static configuration.ConfigurationKt.DEPLOYMENT_BUCKET_NAME;
 import static configuration.ConfigurationKt.STACK_UPDATE_FILE;
@@ -90,8 +91,11 @@ public class DeploymentMojo extends AbstractMojo {
 
             LambdaService lambdaClient = new LambdaService(logger, region);
 
-            for (String lambda : nimbusState.getAfterDeployments().get(stage)) {
-                lambdaClient.invokeNoArgs(lambda);
+            List<String> afterDeployments = nimbusState.getAfterDeployments().get(stage);
+            if (afterDeployments != null) {
+                for (String lambda : afterDeployments) {
+                    lambdaClient.invokeNoArgs(lambda);
+                }
             }
         }
     }
