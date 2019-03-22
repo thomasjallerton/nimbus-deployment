@@ -53,8 +53,8 @@ class CloudFormationService(private val logger: Log, region: String) {
         }
     }
 
-    fun createStack(projectName: String, stage: String): CreateStackResponse {
-        val templateText = fileService.getFileText("$STACK_CREATE_FILE-$stage.json")
+    fun createStack(projectName: String, stage: String, compiledSourcesPath: String): CreateStackResponse {
+        val templateText = fileService.getFileText("$compiledSourcesPath$STACK_CREATE_FILE-$stage.json")
         val createStackRequest = CreateStackRequest()
                 .withStackName(projectName)
                 .withCapabilities("CAPABILITY_NAMED_IAM")

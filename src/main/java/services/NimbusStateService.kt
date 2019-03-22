@@ -7,9 +7,14 @@ import persisted.NimbusState
 
 class NimbusStateService(private val logger: Log) {
 
-    fun getNimbusState(): NimbusState {
+    fun getNimbusState(compiledSourcePath: String): NimbusState {
         val fileService = FileService(logger)
-        val stateText = fileService.getFileText(NIMBUS_STATE)
+        val stateText = try {
+            fileService.getFileText(compiledSourcePath + NIMBUS_STATE)
+        } catch (e: Exception) {
+            logger.error("Couldn't open nimbus state file, must have compiled code beforehand")
+            return NimbusState()
+        }
         val mapper = ObjectMapper()
 
         try {

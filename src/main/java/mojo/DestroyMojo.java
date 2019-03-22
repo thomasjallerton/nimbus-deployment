@@ -25,20 +25,23 @@ public class DestroyMojo extends AbstractMojo {
     @Parameter(property = "stage", defaultValue = "dev")
     private String stage;
 
-    private NimbusState nimbusState;
+    @Parameter(property = "compiledSourcePath", defaultValue = "target/generated-sources/annotations/")
+    private String compiledSourcePath;
 
     public DestroyMojo() {
         super();
         logger = getLog();
-        nimbusState = new NimbusStateService(logger).getNimbusState();
     }
 
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
+        NimbusState nimbusState = new NimbusStateService(logger).getNimbusState(compiledSourcePath);
+
         CloudFormationService cloudFormationService = new CloudFormationService(logger, region);
         S3Service s3Service = new S3Service(region, nimbusState, logger);
         String stackName = nimbusState.getProjectName() + "-" + stage;
 
+        logger.info(nimbusState.getProjectName() + "-" + stage + "-" + DEPLOYMENT_BUCKET_NAME);
         FindExportResponse bucketName = cloudFormationService.findExport(
                  nimbusState.getProjectName() + "-" + stage + "-" + DEPLOYMENT_BUCKET_NAME);
 

@@ -24,7 +24,6 @@ import static configuration.ConfigurationKt.STACK_UPDATE_FILE;
 public class DeploymentMojo extends AbstractMojo {
 
     private Log logger;
-    private NimbusState nimbusState;
 
     @Parameter(property = "region", defaultValue = "eu-west-1")
     private String region;
@@ -35,20 +34,24 @@ public class DeploymentMojo extends AbstractMojo {
     @Parameter(property = "shadedJarPath", defaultValue = "target/lambda.jar")
     private String lambdaPath;
 
+    @Parameter(property = "compiledSourcePath", defaultValue = "target/generated-sources/annotations/")
+    private String compiledSourcePath;
+
     public DeploymentMojo() {
         super();
         logger = getLog();
-        nimbusState = new NimbusStateService(logger).getNimbusState();
     }
 
     public void execute() throws MojoExecutionException, MojoFailureException {
+        NimbusState nimbusState = new NimbusStateService(logger).getNimbusState(compiledSourcePath);
+
         CloudFormationService cloudFormationService = new CloudFormationService(logger, region);
         S3Service s3Service = new S3Service(region, nimbusState, logger);
 
         String stackName = nimbusState.getProjectName() + "-" + stage;
         logger.info("Beginning deployment for project: " + nimbusState.getProjectName() + ", stage: " + stage);
         //Try to create stack
-        CreateStackResponse createSuccessful = cloudFormationService.createStack(stackName, stage);
+        CreateStackResponse createSuccessful = cloudFormationService.createStack(stackName, stage, compiledSourcePath);
         if (!createSuccessful.getSuccessful()) throw new MojoFailureException("Unable to create stack");
 
         if (createSuccessful.getAlreadyExists()) {
@@ -71,7 +74,7 @@ public class DeploymentMojo extends AbstractMojo {
         if (!uploadSuccessful) throw new MojoFailureException("Failed uploading lambda code");
 
         logger.info("Uploading cloudformation file");
-        boolean cloudFormationUploadSuccessful = s3Service.uploadToS3(bucketName.getResult(), STACK_UPDATE_FILE + "-" + stage + ".json", "update-template");
+        boolean cloudFormationUploadSuccessful = s3Service.uploadToS3(bucketName.getResult(), compiledSourcePath + STACK_UPDATE_FILE + "-" + stage + ".json", "update-template");
         if (!cloudFormationUploadSuccessful) throw new MojoFailureException("Failed uploading cloudformation update code");
 
         URL cloudformationUrl = s3Service.getUrl(bucketName.getResult(), "update-template");
