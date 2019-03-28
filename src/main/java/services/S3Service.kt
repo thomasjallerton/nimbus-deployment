@@ -19,26 +19,59 @@ class S3Service(
             .withRegion(region)
             .build()
 
+    fun uploadLambdaJarToS3(bucketName: String, filePath: String, s3Path: String): Boolean {
+        return uploadToS3(bucketName, filePath, "nimbus/${config.projectName}/" +
+                config.compilationTimeStamp + "/" + s3Path)
+    }
+
     fun uploadToS3(bucketName: String, filePath: String, s3Path: String): Boolean {
         try {
             //Upload to S3
 
+            logger.info("$bucketName $filePath $s3Path")
 
-            val lambdaFile = File(filePath)
-            s3Client.putObject(bucketName, "nimbus/${config.projectName}/" +
-                    config.compilationTimeStamp + "/" + s3Path, lambdaFile)
-            logger.info("Uploaded file")
+            val file = File(filePath)
+            if (file.isFile) {
+                s3Client.putObject(bucketName, s3Path, file)
+                logger.info("Uploaded file")
+            } else if (file.isDirectory){
+                val newPath = if (s3Path.endsWith("/") || s3Path.isEmpty()) {
+                    s3Path
+                } else {
+                    "$s3Path/"
+                }
+                uploadDirectoryToS3(bucketName, file, newPath)
+                logger.info("Successfully uploaded directory $filePath")
+            }
             return true
         } catch (e: AmazonServiceException) {
             // The call was transmitted successfully, but Amazon S3 couldn't process
             // it, so it returned an error response.
+            logger.error(e)
             e.printStackTrace()
         } catch (e: SdkClientException) {
             // Amazon S3 couldn't be contacted for a response, or the client
             // couldn't parse the response from Amazon S3.
+            logger.error(e)
             e.printStackTrace()
         }
         return false
+    }
+
+    private fun uploadDirectoryToS3(bucketName: String, directory: File, s3Path: String) {
+        for (file in directory.listFiles()) {
+            val newPath = if (s3Path.isEmpty()) {
+                file.name
+            } else {
+                "$s3Path/${file.name}"
+            }
+
+            if (file.isFile) {
+                s3Client.putObject(bucketName, newPath, file)
+            } else if (file.isDirectory){
+                uploadDirectoryToS3(bucketName, file, newPath)
+            }
+        }
     }
 
     fun getUrl(bucketName: String, s3Path: String): URL {

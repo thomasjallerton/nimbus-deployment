@@ -16,6 +16,7 @@ import services.S3Service;
 
 import java.net.URL;
 import java.util.List;
+import java.util.Map;
 
 import static configuration.ConfigurationKt.DEPLOYMENT_BUCKET_NAME;
 import static configuration.ConfigurationKt.STACK_UPDATE_FILE;
@@ -64,20 +65,20 @@ public class DeploymentMojo extends AbstractMojo {
         }
 
 
-        FindExportResponse bucketName = cloudFormationService.findExport(
+        FindExportResponse lambdaBucketName = cloudFormationService.findExport(
                 nimbusState.getProjectName() + "-" + stage + "-" + DEPLOYMENT_BUCKET_NAME);
 
-        if (!bucketName.getSuccessful()) throw new MojoFailureException("Unable to find deployment bucket");
+        if (!lambdaBucketName.getSuccessful()) throw new MojoFailureException("Unable to find deployment bucket");
 
         logger.info("Uploading lambda file");
-        boolean uploadSuccessful = s3Service.uploadToS3(bucketName.getResult(), lambdaPath, "lambdacode");
+        boolean uploadSuccessful = s3Service.uploadLambdaJarToS3(lambdaBucketName.getResult(), lambdaPath, "lambdacode");
         if (!uploadSuccessful) throw new MojoFailureException("Failed uploading lambda code");
 
         logger.info("Uploading cloudformation file");
-        boolean cloudFormationUploadSuccessful = s3Service.uploadToS3(bucketName.getResult(), compiledSourcePath + STACK_UPDATE_FILE + "-" + stage + ".json", "update-template");
+        boolean cloudFormationUploadSuccessful = s3Service.uploadLambdaJarToS3(lambdaBucketName.getResult(), compiledSourcePath + STACK_UPDATE_FILE + "-" + stage + ".json", "update-template");
         if (!cloudFormationUploadSuccessful) throw new MojoFailureException("Failed uploading cloudformation update code");
 
-        URL cloudformationUrl = s3Service.getUrl(bucketName.getResult(), "update-template");
+        URL cloudformationUrl = s3Service.getUrl(lambdaBucketName.getResult(), "update-template");
 
         boolean updating = cloudFormationService.updateStack(stackName, cloudformationUrl);
 
@@ -88,6 +89,20 @@ public class DeploymentMojo extends AbstractMojo {
         cloudFormationService.pollStackStatus(stackName, 0);
 
         logger.info("Updated stack successfully, deployment complete");
+
+        if (nimbusState.getFileUploads().size() > 0) {
+            logger.info("Starting File Uploads");
+
+            Map<String, Map<String, String>> bucketUploads = nimbusState.getFileUploads().get(stage);
+            for (Map.Entry<String, Map<String, String>> bucketUpload : bucketUploads.entrySet()) {
+                String bucketName = bucketUpload.getKey();
+                for (Map.Entry<String, String> files: bucketUpload.getValue().entrySet()) {
+                    String localFile = files.getKey();
+                    String targetFile = files.getValue();
+                    s3Service.uploadToS3(bucketName, localFile, targetFile);
+                }
+            }
+        }
 
         if (nimbusState.getAfterDeployments().size() > 0) {
             logger.info("Starting after deployment script");

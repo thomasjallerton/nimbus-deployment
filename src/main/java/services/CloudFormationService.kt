@@ -48,6 +48,7 @@ class CloudFormationService(private val logger: Log, region: String) {
             client.updateStack(updateStackRequest)
             true
         } catch (e: Exception) {
+            if (e.message!!.contains("No updates are to be performed")) return true
             logger.error(e.localizedMessage)
             false
         }
