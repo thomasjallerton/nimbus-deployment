@@ -21,18 +21,16 @@ class S3Service(
 
     fun uploadLambdaJarToS3(bucketName: String, filePath: String, s3Path: String): Boolean {
         return uploadToS3(bucketName, filePath, "nimbus/${config.projectName}/" +
-                config.compilationTimeStamp + "/" + s3Path)
+                config.compilationTimeStamp + "/" + s3Path) { file -> file}
     }
 
-    fun uploadToS3(bucketName: String, filePath: String, s3Path: String): Boolean {
+    fun uploadToS3(bucketName: String, filePath: String, s3Path: String, fileTransformation: (File) -> File): Boolean {
         try {
             //Upload to S3
 
-            logger.info("$bucketName $filePath $s3Path")
-
             val file = File(filePath)
             if (file.isFile) {
-                s3Client.putObject(bucketName, s3Path, file)
+                s3Client.putObject(bucketName, s3Path, fileTransformation(file))
                 logger.info("Uploaded file")
             } else if (file.isDirectory){
                 val newPath = if (s3Path.endsWith("/") || s3Path.isEmpty()) {
@@ -40,7 +38,7 @@ class S3Service(
                 } else {
                     "$s3Path/"
                 }
-                uploadDirectoryToS3(bucketName, file, newPath)
+                uploadDirectoryToS3(bucketName, file, newPath, fileTransformation)
                 logger.info("Successfully uploaded directory $filePath")
             }
             return true
@@ -58,7 +56,7 @@ class S3Service(
         return false
     }
 
-    private fun uploadDirectoryToS3(bucketName: String, directory: File, s3Path: String) {
+    private fun uploadDirectoryToS3(bucketName: String, directory: File, s3Path: String, fileTransformation: (File) -> File) {
         for (file in directory.listFiles()) {
             val newPath = if (s3Path.isEmpty()) {
                 file.name
@@ -67,9 +65,9 @@ class S3Service(
             }
 
             if (file.isFile) {
-                s3Client.putObject(bucketName, newPath, file)
+                s3Client.putObject(bucketName, newPath, fileTransformation(file))
             } else if (file.isDirectory){
-                uploadDirectoryToS3(bucketName, file, newPath)
+                uploadDirectoryToS3(bucketName, file, newPath, fileTransformation)
             }
         }
     }

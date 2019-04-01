@@ -6,20 +6,19 @@ import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugin.logging.Log;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
+import persisted.FileUploadDescription;
 import persisted.NimbusState;
-import services.CloudFormationService;
+import services.*;
 import services.CloudFormationService.CreateStackResponse;
 import services.CloudFormationService.FindExportResponse;
-import services.LambdaService;
-import services.NimbusStateService;
-import services.S3Service;
 
+import java.io.File;
 import java.net.URL;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static configuration.ConfigurationKt.DEPLOYMENT_BUCKET_NAME;
-import static configuration.ConfigurationKt.STACK_UPDATE_FILE;
+import static configuration.ConfigurationKt.*;
 
 @Mojo(name = "deploy")
 public class DeploymentMojo extends AbstractMojo {
@@ -43,11 +42,13 @@ public class DeploymentMojo extends AbstractMojo {
         logger = getLog();
     }
 
+
     public void execute() throws MojoExecutionException, MojoFailureException {
         NimbusState nimbusState = new NimbusStateService(logger).getNimbusState(compiledSourcePath);
 
         CloudFormationService cloudFormationService = new CloudFormationService(logger, region);
         S3Service s3Service = new S3Service(region, nimbusState, logger);
+        FileService fileService = new FileService(logger);
 
         String stackName = nimbusState.getProjectName() + "-" + stage;
         logger.info("Beginning deployment for project: " + nimbusState.getProjectName() + ", stage: " + stage);
@@ -90,16 +91,36 @@ public class DeploymentMojo extends AbstractMojo {
 
         logger.info("Updated stack successfully, deployment complete");
 
+        Map<String, String> substitutionParams = new HashMap<>();
+
+        String httpUrl = null;
+        if (nimbusState.getHasHttpServerlessFunctions()) {
+            FindExportResponse exportResponse = cloudFormationService.findExport(
+                    nimbusState.getProjectName() + "-" + stage + "-" + REST_API_URL_OUTPUT
+            );
+            if (exportResponse.getSuccessful()) {
+                httpUrl = exportResponse.getResult();
+            }
+        }
+
+        substitutionParams.put(REST_API_URL_SUBSTITUTE, httpUrl);
+
         if (nimbusState.getFileUploads().size() > 0) {
             logger.info("Starting File Uploads");
 
-            Map<String, Map<String, String>> bucketUploads = nimbusState.getFileUploads().get(stage);
-            for (Map.Entry<String, Map<String, String>> bucketUpload : bucketUploads.entrySet()) {
+            Map<String, List<FileUploadDescription>> bucketUploads = nimbusState.getFileUploads().get(stage);
+            for (Map.Entry<String, List<FileUploadDescription>> bucketUpload : bucketUploads.entrySet()) {
                 String bucketName = bucketUpload.getKey();
-                for (Map.Entry<String, String> files: bucketUpload.getValue().entrySet()) {
-                    String localFile = files.getKey();
-                    String targetFile = files.getValue();
-                    s3Service.uploadToS3(bucketName, localFile, targetFile);
+                for (FileUploadDescription fileUploadDescription: bucketUpload.getValue()) {
+                    String localFile = fileUploadDescription.getLocalFile();
+                    String targetFile = fileUploadDescription.getTargetFile();
+
+                    if (fileUploadDescription.getSubstituteVariables()) {
+                        s3Service.uploadToS3(bucketName, localFile, targetFile,
+                                (file) -> fileService.replaceInFile(substitutionParams, file));
+                    } else {
+                        s3Service.uploadToS3(bucketName, localFile, targetFile, (file) -> file);
+                    }
                 }
             }
         }
@@ -115,6 +136,12 @@ public class DeploymentMojo extends AbstractMojo {
                     lambdaClient.invokeNoArgs(lambda);
                 }
             }
+        }
+
+        logger.info("Deployment completed");
+
+        if (httpUrl != null) {
+            logger.info("Created Rest Api. Base URL is " + httpUrl);
         }
     }
 }
