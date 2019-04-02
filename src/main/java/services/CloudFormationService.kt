@@ -38,7 +38,6 @@ class CloudFormationService(private val logger: Log, region: String) {
 
     data class FindExportResponse(val successful: Boolean, val result: String)
 
-
     fun updateStack(projectName: String, url: URL): Boolean {
         val updateStackRequest = UpdateStackRequest()
                 .withStackName(projectName)

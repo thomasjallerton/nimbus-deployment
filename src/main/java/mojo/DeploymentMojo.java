@@ -1,20 +1,22 @@
 package mojo;
 
+import com.amazonaws.services.cloudformation.model.Export;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugin.logging.Log;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
+import persisted.ExportInformation;
 import persisted.FileUploadDescription;
 import persisted.NimbusState;
 import services.*;
 import services.CloudFormationService.CreateStackResponse;
 import services.CloudFormationService.FindExportResponse;
 
-import java.io.File;
 import java.net.URL;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 
@@ -91,19 +93,20 @@ public class DeploymentMojo extends AbstractMojo {
 
         logger.info("Updated stack successfully, deployment complete");
 
-        Map<String, String> substitutionParams = new HashMap<>();
 
-        String httpUrl = null;
-        if (nimbusState.getHasHttpServerlessFunctions()) {
-            FindExportResponse exportResponse = cloudFormationService.findExport(
-                    nimbusState.getProjectName() + "-" + stage + "-" + REST_API_URL_OUTPUT
-            );
+        //Deal with substitutions
+        Map<String, String> substitutionParams = new HashMap<>();
+        Map<String, String> outputMessages = new HashMap<>();
+
+        List<ExportInformation> exports = nimbusState.getExports().getOrDefault(stage, new LinkedList<>());
+        for (ExportInformation export : exports) {
+            FindExportResponse exportResponse = cloudFormationService.findExport(export.getExportName());
             if (exportResponse.getSuccessful()) {
-                httpUrl = exportResponse.getResult();
+                String result = exportResponse.getResult();
+                substitutionParams.put(export.getSubstitutionVariable(), result);
+                outputMessages.put(export.getExportMessage(), result);
             }
         }
-
-        substitutionParams.put(REST_API_URL_SUBSTITUTE, httpUrl);
 
         if (nimbusState.getFileUploads().size() > 0) {
             logger.info("Starting File Uploads");
@@ -140,8 +143,8 @@ public class DeploymentMojo extends AbstractMojo {
 
         logger.info("Deployment completed");
 
-        if (httpUrl != null) {
-            logger.info("Created Rest Api. Base URL is " + httpUrl);
+        for (Map.Entry<String, String> entry : outputMessages.entrySet()) {
+            logger.info(entry.getKey() + entry.getValue());
         }
     }
 }
