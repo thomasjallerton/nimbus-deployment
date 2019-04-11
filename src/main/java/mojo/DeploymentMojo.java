@@ -33,7 +33,7 @@ public class DeploymentMojo extends AbstractMojo {
     @Parameter(property = "stage", defaultValue = "dev")
     private String stage;
 
-    @Parameter(property = "shadedJarPath", defaultValue = "target/lambda.jar")
+    @Parameter(property = "shadedJarPath", defaultValue = "target/functions.jar")
     private String lambdaPath;
 
     @Parameter(property = "compiledSourcePath", defaultValue = "target/generated-sources/annotations/")
