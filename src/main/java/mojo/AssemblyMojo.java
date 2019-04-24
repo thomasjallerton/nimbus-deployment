@@ -1,7 +1,6 @@
 package mojo;
 
 import assembly.Assembler;
-import assembly.AssemblerPreprocessing;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
@@ -49,8 +48,7 @@ public class AssemblyMojo extends AbstractMojo {
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
         NimbusState nimbusState = new NimbusStateService(logger).getNimbusState(compiledSourcePath);
-//        Assembler assembler = new Assembler(mavenProject, repoSession);
-        AssemblerPreprocessing assembler = new AssemblerPreprocessing(mavenProject, repoSession);
+        Assembler assembler = new Assembler(mavenProject, repoSession, logger);
         assembler.assembleProject(nimbusState.getHandlerFiles());
     }
 }

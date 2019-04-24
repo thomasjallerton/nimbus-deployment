@@ -19,7 +19,7 @@ class S3Service(
             .withRegion(region)
             .build()
 
-    fun uploadLambdaJarToS3(bucketName: String, filePath: String, s3Path: String): Boolean {
+    fun uploadShadedLambdaJarToS3(bucketName: String, filePath: String, s3Path: String): Boolean {
         return uploadToS3(bucketName, filePath, "nimbus/${config.projectName}/" +
                 config.compilationTimeStamp + "/" + s3Path) { file -> file}
     }
@@ -31,7 +31,6 @@ class S3Service(
             val file = File(filePath)
             if (file.isFile) {
                 s3Client.putObject(bucketName, s3Path, fileTransformation(file))
-                logger.info("Uploaded file")
             } else if (file.isDirectory){
                 val newPath = if (s3Path.endsWith("/") || s3Path.isEmpty()) {
                     s3Path
