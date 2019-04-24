@@ -37,6 +37,7 @@ class FileService(private val logger: Log) {
         }
 
         val newFile = File(tempPath + file.name)
+        newFile.parentFile.mkdirs()
         newFile.writeBytes(content.toByteArray(charset))
         return newFile
     }
