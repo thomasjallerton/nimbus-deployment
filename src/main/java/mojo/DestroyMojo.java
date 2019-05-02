@@ -9,6 +9,7 @@ import org.apache.maven.plugins.annotations.Parameter;
 import persisted.NimbusState;
 import services.CloudFormationService;
 import services.CloudFormationService.FindExportResponse;
+import services.FileService;
 import services.NimbusStateService;
 import services.S3Service;
 
@@ -35,7 +36,9 @@ public class DestroyMojo extends AbstractMojo {
 
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
-        NimbusState nimbusState = new NimbusStateService(logger).getNimbusState(compiledSourcePath);
+        String compiledSourcePathFixed = FileService.addDirectorySeparatorIfNecessary(compiledSourcePath);
+
+        NimbusState nimbusState = new NimbusStateService(logger).getNimbusState(compiledSourcePathFixed);
 
         CloudFormationService cloudFormationService = new CloudFormationService(logger, region);
         S3Service s3Service = new S3Service(region, nimbusState, logger);

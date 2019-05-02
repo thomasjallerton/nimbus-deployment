@@ -49,16 +49,18 @@ public class DeploymentMojo extends AbstractMojo {
 
 
     public void execute() throws MojoExecutionException, MojoFailureException {
-        NimbusState nimbusState = new NimbusStateService(logger).getNimbusState(compiledSourcePath);
+        FileService fileService = new FileService(logger);
+
+        String compiledSourcePathFixed = FileService.addDirectorySeparatorIfNecessary(compiledSourcePath);
+        NimbusState nimbusState = new NimbusStateService(logger).getNimbusState(compiledSourcePathFixed);
 
         CloudFormationService cloudFormationService = new CloudFormationService(logger, region);
         S3Service s3Service = new S3Service(region, nimbusState, logger);
-        FileService fileService = new FileService(logger);
 
         String stackName = nimbusState.getProjectName() + "-" + stage;
         logger.info("Beginning deployment for project: " + nimbusState.getProjectName() + ", stage: " + stage);
         //Try to create stack
-        CreateStackResponse createSuccessful = cloudFormationService.createStack(stackName, stage, compiledSourcePath);
+        CreateStackResponse createSuccessful = cloudFormationService.createStack(stackName, stage, compiledSourcePathFixed);
         if (!createSuccessful.getSuccessful()) throw new MojoFailureException("Unable to create stack");
 
         if (createSuccessful.getAlreadyExists()) {
@@ -86,7 +88,7 @@ public class DeploymentMojo extends AbstractMojo {
             for (HandlerInformation handler : nimbusState.getHandlerFiles()) {
                 logger.info("Uploading lambda handler " + count + "/" + numberOfHandlers);
                 count++;
-                String path = assembledJarsDirectory + handler.getHandlerFile();
+                String path = FileService.addDirectorySeparatorIfNecessary(assembledJarsDirectory) + handler.getHandlerFile();
                 boolean uploadSuccessful = s3Service.uploadShadedLambdaJarToS3(lambdaBucketName.getResult(), path, handler.getHandlerFile());
                 if (!uploadSuccessful) throw new MojoFailureException("Failed uploading lambda code, have you run the assemble goal?");
             }
@@ -94,7 +96,7 @@ public class DeploymentMojo extends AbstractMojo {
 
 
         logger.info("Uploading cloudformation file");
-        boolean cloudFormationUploadSuccessful = s3Service.uploadShadedLambdaJarToS3(lambdaBucketName.getResult(), compiledSourcePath + STACK_UPDATE_FILE + "-" + stage + ".json", "update-template");
+        boolean cloudFormationUploadSuccessful = s3Service.uploadShadedLambdaJarToS3(lambdaBucketName.getResult(), compiledSourcePathFixed + STACK_UPDATE_FILE + "-" + stage + ".json", "update-template");
         if (!cloudFormationUploadSuccessful) throw new MojoFailureException("Failed uploading cloudformation update code");
 
         URL cloudformationUrl = s3Service.getUrl(lambdaBucketName.getResult(), "update-template");

@@ -41,4 +41,12 @@ class FileService(private val logger: Log) {
         newFile.writeBytes(content.toByteArray(charset))
         return newFile
     }
+
+    companion object {
+        @JvmStatic
+        fun addDirectorySeparatorIfNecessary(path: String): String {
+            if (path.endsWith(File.separator)) return path
+            return "$path${File.separator}"
+        }
+    }
 }

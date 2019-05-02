@@ -14,6 +14,7 @@ import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.RepositorySystemSession;
 import org.eclipse.aether.repository.RemoteRepository;
 import persisted.NimbusState;
+import services.FileService;
 import services.NimbusStateService;
 
 import java.util.List;
@@ -31,7 +32,7 @@ public class AssemblyMojo extends AbstractMojo {
     @Parameter(property = "localrepository", defaultValue = "${repositorySystemSession}")
     private RepositorySystemSession repoSession;
 
-    @Parameter(defaultValue = "target/generated-sources/annotations/")
+    @Parameter(property = "compiledSourcePath", defaultValue = "target/generated-sources/annotations/")
     private String compiledSourcePath;
 
     @Parameter(defaultValue = "${project.remotePluginRepositories}")
@@ -47,7 +48,7 @@ public class AssemblyMojo extends AbstractMojo {
 
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
-        NimbusState nimbusState = new NimbusStateService(logger).getNimbusState(compiledSourcePath);
+        NimbusState nimbusState = new NimbusStateService(logger).getNimbusState(FileService.addDirectorySeparatorIfNecessary(compiledSourcePath));
         Assembler assembler = new Assembler(mavenProject, repoSession, logger);
         assembler.assembleProject(nimbusState.getHandlerFiles());
     }
