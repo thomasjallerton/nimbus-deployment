@@ -1,6 +1,8 @@
 package persisted
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 
+@JsonIgnoreProperties(ignoreUnknown = true)
 data class NimbusState(
         val projectName: String = "",
         val compilationTimeStamp: String  = "",
