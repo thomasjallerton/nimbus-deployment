@@ -48,14 +48,13 @@ public class DestroyMojo extends AbstractMojo {
         FindExportResponse bucketName = cloudFormationService.findExport(
                  nimbusState.getProjectName() + "-" + stage + "-" + DEPLOYMENT_BUCKET_NAME);
 
-        if (!bucketName.getSuccessful()) {
-            throw new MojoExecutionException("Unable to find S3 Bucket, does stack exist?");
+        if (bucketName.getSuccessful()) {
+            logger.info("Found S3 bucket, about to empty");
+            s3Service.deleteBucket(bucketName.getResult());
+            logger.info("Emptied S3 bucket");
         }
 
-        logger.info("Found S3 bucket, about to empty");
-        s3Service.deleteBucket(bucketName.getResult());
 
-        logger.info("Emptied S3 bucket");
 
         boolean deleting = cloudFormationService.deleteStack(stackName);
         if (!deleting) throw new MojoFailureException("Unable to delete stack");
