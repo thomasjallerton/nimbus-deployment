@@ -17,7 +17,8 @@ import java.util.jar.Manifest
 
 class DependencyProcessor(
         private val mavenDependencies: Map<String, String>,
-        private val extraDependencies: Set<String>
+        private val extraDependencies: Set<String>,
+        private val targetDirectory: String
 ) {
 
     private val alreadyProcessed: MutableMap<String, MutableSet<String>> = mutableMapOf()
@@ -39,7 +40,7 @@ class DependencyProcessor(
             dependencies.addAll(extraDependencies)
 
             val manifest = Manifest()
-            val targetJar = JarOutputStream(FileOutputStream("target/$fileName.jar"), manifest)
+            val targetJar = JarOutputStream(FileOutputStream("$targetDirectory/$fileName.jar"), manifest)
             outputs.add(targetJar)
 
             val (requiredJar, externalDependencies) = createMapOfJarToRequiredClasses(dependencies)
@@ -77,9 +78,9 @@ class DependencyProcessor(
                     result[jarFilePath]!!.specificClasses.add(classFile)
                 } else {
                     if (dependency.startsWith("com.nimbusframework.nimbuscore")) {
-                        result[jarFilePath] = EntireJarDependency(false, mutableListOf(classFile))
+                        result[jarFilePath] = EntireJarDependency(false, mutableSetOf(classFile))
                     } else {
-                        result[jarFilePath] = EntireJarDependency(true, mutableListOf(classFile))
+                        result[jarFilePath] = EntireJarDependency(true, mutableSetOf(classFile))
                     }
                 }
             } else {
@@ -140,6 +141,7 @@ class DependencyProcessor(
         return set
     }
 
+    //Returns a set of possible dependencies(will not end with .class)
     private fun getDependenciesOfFile(inputStream: InputStream): MutableSet<String> {
         val cf = ClassFile(DataInputStream(inputStream))
         val constPool = cf.constPool
@@ -148,6 +150,9 @@ class DependencyProcessor(
             val constTag = constPool.getTag(ix)
             if (constTag == ConstPool.CONST_Class) {
                 set.add(constPool.getClassInfo(ix))
+            } else if (constTag == ConstPool.CONST_String) {
+                val possibleClassPath = constPool.getStringInfo(ix)
+                set.add(possibleClassPath)
             } else {
                 val descriptorIndex = when (constTag) {
                     ConstPool.CONST_NameAndType -> constPool.getNameAndTypeDescriptor(ix)
@@ -176,5 +181,5 @@ class DependencyProcessor(
         return set
     }
 
-    data class EntireJarDependency(val allClasses: Boolean, val specificClasses: MutableList<String>)
+    data class EntireJarDependency(val allClasses: Boolean, val specificClasses: MutableSet<String>)
 }

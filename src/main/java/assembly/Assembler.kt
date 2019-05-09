@@ -4,6 +4,7 @@ import org.apache.maven.plugin.logging.Log
 import org.apache.maven.project.MavenProject
 import org.eclipse.aether.RepositorySystemSession
 import persisted.HandlerInformation
+import services.FileService
 
 
 class Assembler(
@@ -28,7 +29,8 @@ class Assembler(
 
         log.info("Processing Dependencies")
 
-        val dependencyProcessor = DependencyProcessor(mavenDependencies, extraDependencies)
+        val targetDirectory = FileService.addDirectorySeparatorIfNecessary(mavenProject.build.outputDirectory)
+        val dependencyProcessor = DependencyProcessor(mavenDependencies, extraDependencies, targetDirectory)
 
         val (outputs, jarDependencies) = dependencyProcessor.determineDependencies(handlers)
 

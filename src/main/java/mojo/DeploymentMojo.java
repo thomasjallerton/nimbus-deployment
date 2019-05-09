@@ -41,9 +41,6 @@ public class DeploymentMojo extends AbstractMojo {
     @Parameter(property = "shadedJarPath", defaultValue = "target/functions.jar")
     private String lambdaPath;
 
-    @Parameter(property = "assembledJarsDirectory", defaultValue = "target/")
-    private String assembledJarsDirectory;
-
     @Parameter(property = "compiledSourcePath", defaultValue = "target/generated-sources/annotations/")
     private String compiledSourcePath;
 
@@ -155,7 +152,7 @@ public class DeploymentMojo extends AbstractMojo {
             for (HandlerInformation handler : functionsToDeploy) {
                 logger.info("Uploading lambda handler " + count + "/" + deployingHandlers);
                 count++;
-                String path = FileService.addDirectorySeparatorIfNecessary(assembledJarsDirectory) + handler.getHandlerFile();
+                String path = FileService.addDirectorySeparatorIfNecessary(mavenProject.getBuild().getOutputDirectory()) + handler.getHandlerFile();
                 boolean uploadSuccessful = s3Service.uploadFileToCompilationFolder(lambdaBucketName.getResult(), path, handler.getHandlerFile());
                 if (!uploadSuccessful)
                     throw new MojoFailureException("Failed uploading lambda code, have you run the assemble goal?");
