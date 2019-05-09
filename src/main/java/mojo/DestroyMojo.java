@@ -10,7 +10,7 @@ import persisted.NimbusState;
 import services.CloudFormationService;
 import services.CloudFormationService.FindExportResponse;
 import services.FileService;
-import services.NimbusStateService;
+import services.PersistedStateService;
 import services.S3Service;
 
 import static configuration.ConfigurationKt.DEPLOYMENT_BUCKET_NAME;
@@ -38,7 +38,7 @@ public class DestroyMojo extends AbstractMojo {
     public void execute() throws MojoExecutionException, MojoFailureException {
         String compiledSourcePathFixed = FileService.addDirectorySeparatorIfNecessary(compiledSourcePath);
 
-        NimbusState nimbusState = new NimbusStateService(logger).getNimbusState(compiledSourcePathFixed);
+        NimbusState nimbusState = new PersistedStateService(logger, compiledSourcePathFixed).getNimbusState();
 
         CloudFormationService cloudFormationService = new CloudFormationService(logger, region);
         S3Service s3Service = new S3Service(region, nimbusState, logger);

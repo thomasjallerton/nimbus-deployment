@@ -116,8 +116,10 @@ class JarsCreator(
             }
 
             val rootDirectory = File(resourceDirectory.directory)
-            rootDirectory.listFiles().forEach {
-                addRecursiveFilesToJars(fileTargetDirectory, it, targets)
+            if (rootDirectory.exists()) {
+                rootDirectory.listFiles().forEach {
+                    addRecursiveFilesToJars(fileTargetDirectory, it, targets)
+                }
             }
         }
     }

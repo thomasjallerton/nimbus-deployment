@@ -15,7 +15,7 @@ import org.eclipse.aether.RepositorySystemSession;
 import org.eclipse.aether.repository.RemoteRepository;
 import persisted.NimbusState;
 import services.FileService;
-import services.NimbusStateService;
+import services.PersistedStateService;
 
 import java.util.List;
 
@@ -48,7 +48,7 @@ public class AssemblyMojo extends AbstractMojo {
 
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
-        NimbusState nimbusState = new NimbusStateService(logger).getNimbusState(FileService.addDirectorySeparatorIfNecessary(compiledSourcePath));
+        NimbusState nimbusState = new PersistedStateService(logger, FileService.addDirectorySeparatorIfNecessary(compiledSourcePath)).getNimbusState();
         Assembler assembler = new Assembler(mavenProject, repoSession, logger);
         assembler.assembleProject(nimbusState.getHandlerFiles());
     }

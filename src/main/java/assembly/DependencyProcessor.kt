@@ -22,7 +22,7 @@ class DependencyProcessor(
 
     private val alreadyProcessed: MutableMap<String, MutableSet<String>> = mutableMapOf()
 
-    fun determineDependencies(handlers: List<HandlerInformation>): Pair<List<JarOutputStream>, JarDependencies> {
+    fun determineDependencies(handlers: Set<HandlerInformation>): Pair<List<JarOutputStream>, JarDependencies> {
         val jarDependencies = JarDependencies()
         val outputs = mutableListOf<JarOutputStream>()
         handlers.forEach { handler ->

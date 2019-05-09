@@ -24,7 +24,7 @@ class Assembler(
         extraDependencies = pExtraDependencies
     }
 
-    fun assembleProject(handlers: List<HandlerInformation>) {
+    fun assembleProject(handlers: Set<HandlerInformation>) {
 
         log.info("Processing Dependencies")
 

@@ -7,6 +7,7 @@ import com.amazonaws.services.s3.model.ListVersionsRequest
 import org.apache.maven.plugin.logging.Log
 import persisted.NimbusState
 import java.io.File
+import java.lang.Exception
 import java.net.URL
 
 class S3Service(
@@ -19,7 +20,16 @@ class S3Service(
             .withRegion(region)
             .build()
 
-    fun uploadShadedLambdaJarToS3(bucketName: String, filePath: String, s3Path: String): Boolean {
+    fun readFileFromS3(bucketName: String, s3Path: String): String {
+        return try {
+            val file = s3Client.getObject(bucketName, s3Path)
+            file.objectContent.bufferedReader().use { it.readText() }
+        } catch (e: Exception) {
+            ""
+        }
+    }
+
+    fun uploadFileToCompilationFolder(bucketName: String, filePath: String, s3Path: String): Boolean {
         return uploadToS3(bucketName, filePath, "nimbus/${config.projectName}/" +
                 config.compilationTimeStamp + "/" + s3Path) { file -> file}
     }
@@ -40,6 +50,26 @@ class S3Service(
                 uploadDirectoryToS3(bucketName, file, newPath, fileTransformation)
                 logger.info("Successfully uploaded directory $filePath")
             }
+            return true
+        } catch (e: AmazonServiceException) {
+            // The call was transmitted successfully, but Amazon S3 couldn't process
+            // it, so it returned an error response.
+            logger.error(e)
+            e.printStackTrace()
+        } catch (e: SdkClientException) {
+            // Amazon S3 couldn't be contacted for a response, or the client
+            // couldn't parse the response from Amazon S3.
+            logger.error(e)
+            e.printStackTrace()
+        }
+        return false
+    }
+
+    fun uploadToS3(bucketName: String, contents: String, s3Path: String): Boolean {
+        try {
+            //Upload to S3
+
+            s3Client.putObject(bucketName, s3Path, contents)
             return true
         } catch (e: AmazonServiceException) {
             // The call was transmitted successfully, but Amazon S3 couldn't process

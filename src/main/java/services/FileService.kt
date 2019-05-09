@@ -17,15 +17,7 @@ class FileService(private val logger: Log) {
     }
 
     fun getFileText(path: String): String {
-
-        try {
-            val encoded = Files.readAllBytes(Paths.get(path))
-            return String(encoded)
-        } catch (e: IOException) {
-            logger.error(e)
-        }
-
-        return ""
+        return File(path).inputStream().bufferedReader().use{it.readText()}
     }
 
     fun replaceInFile(wordsToReplace: Map<String, String?>, file: File): File {
@@ -40,6 +32,13 @@ class FileService(private val logger: Log) {
         newFile.parentFile.mkdirs()
         newFile.writeBytes(content.toByteArray(charset))
         return newFile
+    }
+
+    fun saveFile(contents: String, path: String) {
+        val file = File(path)
+        file.parentFile.mkdirs()
+
+        file.outputStream().bufferedWriter().use{it.write(contents)}
     }
 
     companion object {
