@@ -150,9 +150,6 @@ class DependencyProcessor(
             val constTag = constPool.getTag(ix)
             if (constTag == ConstPool.CONST_Class) {
                 set.add(constPool.getClassInfo(ix))
-            } else if (constTag == ConstPool.CONST_String) {
-                val possibleClassPath = constPool.getStringInfo(ix)
-                set.add(possibleClassPath)
             } else {
                 val descriptorIndex = when (constTag) {
                     ConstPool.CONST_NameAndType -> constPool.getNameAndTypeDescriptor(ix)
