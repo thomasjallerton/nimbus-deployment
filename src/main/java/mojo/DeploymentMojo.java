@@ -51,6 +51,8 @@ public class DeploymentMojo extends AbstractMojo {
     @Parameter(property = "localrepository", defaultValue = "${repositorySystemSession}")
     private RepositorySystemSession repoSession;
 
+    @Parameter(property = "addEntireJar", defaultValue = "false")
+    private String addEntireJar;
 
     @Parameter(defaultValue = "${project.remotePluginRepositories}")
     private List<RemoteRepository> remoteRepos;
@@ -104,7 +106,8 @@ public class DeploymentMojo extends AbstractMojo {
 
         //Assemble project if necessary
         if (nimbusState.getAssemble()) {
-            Assembler assembler = new Assembler(mavenProject, repoSession, logger);
+            boolean addEntireJarBool = Boolean.parseBoolean(addEntireJar);
+            Assembler assembler = new Assembler(mavenProject, repoSession, addEntireJarBool, logger);
             Set<HandlerInformation> functionsToDeploy = new HashSet<>();
 
             Map<String, DeployedFunctionInformation> functionDeployments = deploymentInformation.getMostRecentDeployedFunctions();
@@ -140,7 +143,7 @@ public class DeploymentMojo extends AbstractMojo {
             }
 
 
-            System.out.println("There are " + functionsToDeploy.size() + " functions to deploy");
+            logger.info("There are " + functionsToDeploy.size() + " functions to deploy");
             assembler.assembleProject(functionsToDeploy);
 
             int numberOfHandlers = nimbusState.getHandlerFiles().size();
@@ -231,7 +234,11 @@ public class DeploymentMojo extends AbstractMojo {
         }
 
         if (nimbusState.getAfterDeployments().size() > 0) {
-            logger.info("Starting after deployment script");
+            if (nimbusState.getAfterDeployments().size() == 1) {
+                logger.info("Starting after deployment script");
+            } else {
+                logger.info("Starting after deployment scripts");
+            }
 
             LambdaService lambdaClient = new LambdaService(logger, region);
 

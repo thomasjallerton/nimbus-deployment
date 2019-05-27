@@ -44,8 +44,8 @@ class FileService(private val logger: Log) {
     companion object {
         @JvmStatic
         fun addDirectorySeparatorIfNecessary(path: String): String {
-            if (path.endsWith('/')) return path
-            return "$path/"
+            if (path.endsWith(File.separatorChar)) return path
+            return "$path${File.separator}"
         }
     }
 }

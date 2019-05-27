@@ -1,11 +1,12 @@
 package assembly
 
-import assembly.models.JarDependencies
+import assembly.models.AssemblyDependencies
 import assembly.models.JarDependency
 import assembly.models.JarDrivers
 import org.apache.maven.model.Resource
 import org.apache.maven.plugin.logging.Log
 import org.apache.maven.project.MavenProject
+import services.FileService
 import java.io.File
 import java.io.InputStream
 import java.util.jar.JarEntry
@@ -14,20 +15,18 @@ import java.util.jar.JarOutputStream
 
 class JarsCreator(
         private val log: Log,
-        mavenProject: MavenProject
-){
+        private val targetDirectory: String
+) {
 
-    private val resourceDirectories = mavenProject.resources as List<Resource>
-
-    fun createJars(jarDependencies: JarDependencies, outputs: List<JarOutputStream>) {
+    fun createJars(assemblyDependencies: AssemblyDependencies, outputs: List<JarOutputStream>) {
         val alreadyAdded = mutableSetOf<String>()
         var count = 1
-        val total = jarDependencies.inJarDependencies.size
+        val total = assemblyDependencies.externalDependencies.size
 
         val jarDrivers: MutableMap<JarOutputStream, JarDrivers> = mutableMapOf()
         outputs.forEach { jarDrivers[it] = JarDrivers() }
 
-        jarDependencies.inJarDependencies.forEach { (sourceJar, dependency) ->
+        assemblyDependencies.externalDependencies.forEach { (sourceJar, dependency) ->
             log.info("Adding $sourceJar [$count/$total]")
             addFromJarToJar(sourceJar, dependency, alreadyAdded, jarDrivers)
             count++
@@ -36,23 +35,22 @@ class JarsCreator(
         jarDrivers.forEach { (outputStream, drivers) -> drivers.writeDrivers(outputStream) }
 
         log.info("Adding local project classes")
-        jarDependencies.localDependencies.forEach { (classPath, targets) ->
-            addLocalToJar(classPath, targets)
+        assemblyDependencies.localDependencies.forEach { (classPath, targets) ->
+            addLocalClassToJar(classPath, targets)
         }
 
-        log.info("Adding resources")
-        addResourcesToJars(outputs)
-
-        outputs.forEach { it.close() }
+        log.info("Adding local resources")
+        assemblyDependencies.localResources.forEach { (classPath, localResource) ->
+            addLocalResourceToJar(classPath, localResource.filePath, localResource.targets)
+        }
     }
-
 
 
     private fun addFromJarToJar(jarFilePath: String, jarDependencies: JarDependency, alreadyAdded: MutableSet<String>, drivers: Map<JarOutputStream, JarDrivers>) {
         val jarFile = JarFile(jarFilePath)
         if (jarDependencies.allClasses.isNotEmpty()) {
             for (entry in jarFile.entries()) {
-                if (entry.name != "META-INF/MANIFEST.MF" && entry.name != "META-INF" ) {
+                if (entry.name != "META-INF/MANIFEST.MF" && entry.name != "META-INF") {
                     if (entry.name.endsWith(".driver", ignoreCase = true)) {
                         val contents = jarFile.getInputStream(entry).bufferedReader().use { it.readText() }
                         jarDependencies.allClasses.forEach {
@@ -64,22 +62,36 @@ class JarsCreator(
                     }
                 }
             }
-        }
-
-        jarDependencies.classOutputs.forEach { (dependency, targets) ->
-            if (!alreadyAdded.contains(dependency)) {
-                val entry = jarFile.getJarEntry(dependency)
-                addInputStreamToJars(dependency, entry.lastModifiedTime.toMillis(), jarFile.getInputStream(entry), targets)
-                alreadyAdded.add(dependency)
+        } else {
+            jarDependencies.specificClasses.forEach { (dependency, targets) ->
+                if (!alreadyAdded.contains(dependency)) {
+                    val entry = jarFile.getJarEntry(dependency)
+                    if (dependency.endsWith(".driver", ignoreCase = true)) {
+                        val contents = jarFile.getInputStream(entry).bufferedReader().use { it.readText() }
+                        targets.forEach {
+                            drivers[it]?.addDriver(entry.name, contents)
+                        }
+                    } else if (!alreadyAdded.contains(dependency)) {
+                        addInputStreamToJars(dependency, entry.lastModifiedTime.toMillis(), jarFile.getInputStream(entry), targets)
+                        alreadyAdded.add(dependency)
+                    }
+                }
             }
         }
     }
 
-    private fun addLocalToJar(classPath: String, targets: List<JarOutputStream>) {
-        val projectFilePath = "target" + File.separator + "classes" + File.separator + classPath.replace('/', File.separatorChar)
+    private fun addLocalClassToJar(jarPath: String, targets: List<JarOutputStream>) {
+        val projectFilePath = targetDirectory + jarPath.replace('/', File.separatorChar)
         val projectFile = File(projectFilePath)
         if (projectFile.exists()) {
-            addInputStreamToJars(classPath, projectFile.lastModified(), projectFile.inputStream(), targets)
+            addInputStreamToJars(jarPath, projectFile.lastModified(), projectFile.inputStream(), targets)
+        }
+    }
+
+    private fun addLocalResourceToJar(targetPath: String, localPath: String, targets: List<JarOutputStream>) {
+        val projectFile = File(localPath)
+        if (projectFile.exists()) {
+            addInputStreamToJars(targetPath, projectFile.lastModified(), projectFile.inputStream(), targets)
         }
     }
 
@@ -105,33 +117,5 @@ class JarsCreator(
             it.closeEntry()
         }
         inputStream.close()
-    }
-
-    private fun addResourcesToJars(targets: List<JarOutputStream>) {
-        for (resourceDirectory in resourceDirectories) {
-            val fileTargetDirectory = if (resourceDirectory.targetPath == null) {
-                ""
-            } else {
-                resourceDirectory.targetPath
-            }
-
-            val rootDirectory = File(resourceDirectory.directory)
-            if (rootDirectory.exists()) {
-                rootDirectory.listFiles().forEach {
-                    addRecursiveFilesToJars(fileTargetDirectory, it, targets)
-                }
-            }
-        }
-    }
-
-    private fun addRecursiveFilesToJars(path: String, file: File, targets: List<JarOutputStream>) {
-        val filePath = if (path == "") file.name else "$path/${file.name}"
-        if (file.isDirectory) {
-            file.listFiles().forEach {
-                addRecursiveFilesToJars(filePath, it, targets)
-            }
-        } else if (file.isFile) {
-            addInputStreamToJars(filePath, file.lastModified(), file.inputStream(), targets)
-        }
     }
 }

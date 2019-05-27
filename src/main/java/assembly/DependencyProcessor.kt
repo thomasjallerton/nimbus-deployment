@@ -1,182 +1,215 @@
 package assembly
 
-import assembly.models.JarDependencies
+import assembly.models.AssemblyDependencies
 import assembly.models.JarDependency
+import assembly.models.LocalResource
+import assembly.models.MavenDependency
 import configuration.EMPTY_CLIENTS
 import javassist.bytecode.ClassFile
 import javassist.bytecode.ConstPool
 import persisted.HandlerInformation
 import java.io.DataInputStream
 import java.io.File
-import java.io.FileOutputStream
 import java.io.InputStream
 import java.util.HashSet
 import java.util.jar.JarFile
 import java.util.jar.JarOutputStream
-import java.util.jar.Manifest
 
 class DependencyProcessor(
-        private val mavenDependencies: Map<String, String>,
-        private val extraDependencies: Set<String>,
-        private val targetDirectory: String
+        private val mavenDependencies: Map<String, MavenDependency>,
+        private val localResources: Map<String, String>,
+        private val targetDirectory: String,
+        private val addEntireJars: Boolean
 ) {
 
     private val alreadyProcessed: MutableMap<String, MutableSet<String>> = mutableMapOf()
 
-    fun determineDependencies(handlers: Set<HandlerInformation>): Pair<List<JarOutputStream>, JarDependencies> {
-        val jarDependencies = JarDependencies()
-        val outputs = mutableListOf<JarOutputStream>()
-        handlers.forEach { handler ->
-            val fileName = handler.handlerClassPath.substringAfterLast(File.separatorChar)
-            val handlerStream = getClassFile(handler.handlerClassPath)!!
+    fun determineDependencies(handlers: Iterable<Pair<HandlerInformation, JarOutputStream>>): AssemblyDependencies {
+        val assemblyDependencies = AssemblyDependencies()
+        handlers.forEach { pair ->
+            val handler = pair.first
+            val targetJar = pair.second
+            val handlerStream = getClassFile(classPathToJarPath(handler.handlerClassPath))!!
 
             val dependencies = getDependenciesOfFile(handlerStream)
             dependencies.addAll(
-                    handler.usesClients.flatMap { it.toClassPaths() }
+                    handler.usesClients.flatMap { it.toClassPaths() }.map { classPathToJarPath(it) }
             )
-            dependencies.addAll(handler.extraDependencies)
+
+            val jarPathExtraDependencies = handler.extraDependencies.map { classPathToJarPath(it) }.toSet()
+
+            dependencies.addAll(jarPathExtraDependencies)
 
             dependencies.addAll(getRecursiveDependencies(dependencies, handler.usesClients))
-            dependencies.addAll(extraDependencies)
 
-            val manifest = Manifest()
-            val targetJar = JarOutputStream(FileOutputStream("$targetDirectory/$fileName.jar"), manifest)
-            outputs.add(targetJar)
-
-            val (requiredJar, externalDependencies) = createMapOfJarToRequiredClasses(dependencies)
-
-            externalDependencies.forEach { classPath ->
-                val targets = jarDependencies.localDependencies.getOrPut(classPath) { mutableListOf() }
-                targets.add(targetJar)
-            }
-
-            requiredJar.forEach { (jarFile, jarDependency) ->
-                val jarClasses = jarDependencies.inJarDependencies.getOrPut(jarFile) { JarDependency() }
-                if (jarDependency.allClasses) {
-                    jarClasses.allClasses.add(targetJar)
-                } else {
-                    jarDependency.specificClasses.forEach {
-                        val listOfOutputs = jarClasses.classOutputs.getOrPut(it) { mutableListOf() }
-                        listOfOutputs.add(targetJar)
-                    }
-                }
-            }
+            addToAssemblyDependencies(dependencies, jarPathExtraDependencies, assemblyDependencies, targetJar)
         }
-        return Pair(outputs, jarDependencies)
+        return assemblyDependencies
     }
 
-    private fun createMapOfJarToRequiredClasses(dependencies: Set<String>): Pair<Map<String, EntireJarDependency>, Set<String>> {
-        val result: MutableMap<String, EntireJarDependency> = mutableMapOf()
-        val notFoundInJars: MutableSet<String> = mutableSetOf()
+    private fun addToAssemblyDependencies(dependencies: Set<String>, forceEntireJar: Set<String>, assemblyDependencies: AssemblyDependencies, targetJar: JarOutputStream) { //: Pair<Map<String, EntireJarDependency>, Set<String>> {
+        val alreadyProcessedMavenDependency: MutableSet<MavenDependency> = mutableSetOf()
+
         for (dependency in dependencies) {
-            val classFile = "${dependency.replace('.', '/')}.class"
+            val mavenDependency = mavenDependencies[dependency]
 
-            val jarFilePath = mavenDependencies[classFile]
+            if (mavenDependency != null) {
+                val jarFilePath = mavenDependency.filePath
 
-            if (jarFilePath != null) {
-                if (result.containsKey(jarFilePath)) {
-                    result[jarFilePath]!!.specificClasses.add(classFile)
+                val externalDependency = assemblyDependencies.externalDependencies.getOrPut(jarFilePath) { JarDependency() }
+                if (forceEntireJar.contains(dependency) || addEntireJars) {
+                    externalDependency.allClasses.add(targetJar)
                 } else {
-                    if (dependency.startsWith("com.nimbusframework.nimbuscore")) {
-                        result[jarFilePath] = EntireJarDependency(false, mutableSetOf(classFile))
-                    } else {
-                        result[jarFilePath] = EntireJarDependency(true, mutableSetOf(classFile))
+                    externalDependency.specificClasses.getOrPut(dependency) { mutableListOf() }.add(targetJar)
+                    if (!alreadyProcessedMavenDependency.contains(mavenDependency)) {
+                        mavenDependency.requiredClasses.forEach {
+                            val specificTargets = externalDependency.specificClasses.getOrPut(it) { mutableListOf() }
+                            specificTargets.add(targetJar)
+                        }
                     }
                 }
+                alreadyProcessedMavenDependency.add(mavenDependency)
             } else {
-                notFoundInJars.add(classFile)
+                if (localResources.contains(dependency)) {
+                    assemblyDependencies.localResources.getOrPut(dependency) { LocalResource(localResources[dependency]!!) }.targets.add(targetJar)
+                } else {
+                    assemblyDependencies.localDependencies.getOrPut(dependency) { mutableListOf() }.add(targetJar)
+                }
             }
         }
-        return Pair(result, notFoundInJars)
     }
 
+    //Expects JAR path
     private fun getClassFile(path: String): InputStream? {
-        if (path.startsWith("java")) return null
+        if (path.startsWith("java") || !path.endsWith(".class")) return null
 
-        val projectFilePath = "target" + File.separator + "classes" + File.separator + path + ".class"
+        val operatingSystemPath = path.replace('/', File.separatorChar)
+        val projectFilePath = targetDirectory + File.separator + operatingSystemPath
         val projectFile = File(projectFilePath)
         if (projectFile.exists()) return projectFile.inputStream()
 
-        val classFile = "${path.replace(File.separatorChar, '/')}.class"
-        if (mavenDependencies.containsKey(classFile)) {
-            val jarFilePath = mavenDependencies[classFile]!!
-            return openJar(jarFilePath, classFile)
-        }
-        return null
-    }
+        val jarFilePath = mavenDependencies[path]?.filePath ?: return null
 
-    private fun openJar(jarFilePath: String, pathInJar: String): InputStream {
         val jarFile = JarFile(jarFilePath)
-        val jarEntry = jarFile.getJarEntry(pathInJar)
+        val jarEntry = jarFile.getJarEntry(path)
+        if (jarEntry.isDirectory) return null
         return jarFile.getInputStream(jarEntry)
     }
 
+    //Return JAR path of files
+    private fun getRecursiveDependencies(jarPaths: Set<String>, clients: Set<ClientType>): Set<String> {
+        val dependencies: MutableSet<String> = mutableSetOf()
 
-    private fun getRecursiveDependencies(classPaths: Set<String>, clients: Set<ClientType>): Set<String> {
-        val set: MutableSet<String> = mutableSetOf()
-
-        for (classPath in classPaths) {
-            if (alreadyProcessed.contains(classPath)) {
-                set.addAll(alreadyProcessed[classPath]!!)
+        for (jarPath in jarPaths) {
+            if (alreadyProcessed.contains(jarPath)) {
+                dependencies.addAll(alreadyProcessed[jarPath]!!)
                 continue
             }
             val results = mutableSetOf<String>()
-            alreadyProcessed[classPath] = results
+            alreadyProcessed[jarPath] = results
 
             //This is required if clients are declared in fields they do not throw class not found errors if the client is not used
-            val subSet = if (classPath == "com.nimbusframework.nimbuscore.clients.ClientBuilder") {
+            val directDependencies = if (jarPath == "com/nimbusframework/nimbuscore/clients/ClientBuilder.class") {
                 EMPTY_CLIENTS
             } else {
-                val dependencyPath = classPath.replace('.', File.separatorChar)
-                val inputStream = getClassFile(dependencyPath) ?: continue
+                val inputStream = getClassFile(jarPath) ?: continue
                 getDependenciesOfFile(inputStream)
             }
 
-            val subSetDependencies = getRecursiveDependencies(subSet, clients)
-            results.addAll(subSet)
-            results.addAll(subSetDependencies)
+            val recursiveDependencies = getRecursiveDependencies(directDependencies, clients)
+            results.addAll(directDependencies)
+            results.addAll(recursiveDependencies)
 
-            set.addAll(results)
+            dependencies.addAll(results)
         }
-        return set
+        return dependencies
     }
 
-    //Returns a set of possible dependencies(will not end with .class)
+    // Returns a set of possible dependencies
+    // Dependencies of form 'path.path.path.ClassName)
     private fun getDependenciesOfFile(inputStream: InputStream): MutableSet<String> {
         val cf = ClassFile(DataInputStream(inputStream))
         val constPool = cf.constPool
-        val set = HashSet<String>()
+        val dependencies = HashSet<String>()
         for (ix in 1 until constPool.size) {
             val constTag = constPool.getTag(ix)
+
             if (constTag == ConstPool.CONST_Class) {
-                set.add(constPool.getClassInfo(ix))
+                //Always a class
+                val constClass = classPathToJarPath(constPool.getClassInfo(ix))
+                dependencies.add(constClass)
+            } else if (constTag == ConstPool.CONST_String) {
+                //Could be any kind of file
+                val possibleDependency = constPool.getStringInfo(ix)
+                if (possibleDependency != null) {
+                    addAnyFileToDependencySet(possibleDependency, dependencies)
+                }
+            } else if (constTag == ConstPool.CONST_Utf8) {
+                //Could be any kind of file
+
+                val desc = constPool.getUtf8Info(ix)
+                addAnyFileToDependencySet(desc, dependencies)
+                addAnyClassToDependencySet(desc, dependencies)
             } else {
                 val descriptorIndex = when (constTag) {
                     ConstPool.CONST_NameAndType -> constPool.getNameAndTypeDescriptor(ix)
                     ConstPool.CONST_MethodType -> constPool.getMethodTypeInfo(ix)
                     else -> -1
                 }
-
                 if (descriptorIndex != -1) {
+                    //Guaranteed to be class
                     val desc = constPool.getUtf8Info(descriptorIndex)
-                    var p = 0
-                    while (p < desc.length) {
-                        if (desc[p] == 'L') {
-                            val semiColonIndex = desc.indexOf(';', p)
-                            val toAdd = desc.substring(p + 1, semiColonIndex).replace('/', '.')
-                            set.add(toAdd)
-                            p = semiColonIndex
-                        }
-                        p++
-                    }
-
+                    addAnyClassToDependencySet(desc, dependencies)
                 }
 
             }
         }
         inputStream.close()
-        return set
+        return dependencies
     }
 
-    data class EntireJarDependency(val allClasses: Boolean, val specificClasses: MutableSet<String>)
+    private fun addAnyClassToDependencySet(desc: String, dependencies: MutableSet<String>) {
+        var p = 0
+        while (p < desc.length) {
+            //Will always be a class (path/path/path/class)
+            if (desc[p] == 'L') {
+                val semiColonIndex = desc.indexOf(';', p)
+                if (semiColonIndex < 0) break
+
+                val typeIndex = desc.indexOf('<', p)
+                val endIndex = if (typeIndex in (p + 1) until semiColonIndex) {
+                    typeIndex
+                } else {
+                    semiColonIndex
+                }
+                val toAdd = desc.substring(p + 1, endIndex) + ".class"
+                dependencies.add(toAdd)
+                p = endIndex
+            }
+            p++
+        }
+    }
+
+    private fun addAnyFileToDependencySet(possibleDependency: String, dependencies: MutableSet<String>) {
+        val noLeadingSeparator = removeLeadingSeparator(possibleDependency)
+        if (mavenDependencies.containsKey(noLeadingSeparator) || localResources.containsKey(noLeadingSeparator)) {
+            dependencies.add(noLeadingSeparator)
+        }
+        val transformedClassPath = classPathToJarPath(noLeadingSeparator)
+        if (mavenDependencies.containsKey(transformedClassPath)) {
+            dependencies.add(transformedClassPath)
+        }
+    }
+
+    private fun removeLeadingSeparator(path: String): String {
+        return if (path.startsWith('/')) {
+            path.substring(1, path.length)
+        } else {
+            path
+        }
+    }
+
+    private fun classPathToJarPath(classPath: String): String {
+        return classPath.replace('.', '/') + ".class"
+    }
 }

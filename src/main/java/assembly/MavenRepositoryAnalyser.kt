@@ -1,5 +1,6 @@
 package assembly
 
+import assembly.models.MavenDependency
 import org.apache.maven.artifact.Artifact
 import org.apache.maven.project.MavenProject
 import org.eclipse.aether.RepositorySystemSession
@@ -13,21 +14,22 @@ class MavenRepositoryAnalyser(
 
     private val localRepoPath = repoSession.localRepository.basedir.absolutePath
 
-    fun analyseRepository(): Pair<Map<String, String>, Set<String>> {
-        val processingMavenDependencies: MutableMap<String, String> = mutableMapOf()
-        val processingExtraDependencies: MutableSet<String> = mutableSetOf()
-        val artifacts = mavenProject.artifacts as Set<Artifact>
+    //Keys are of format 'path/path/file.extension'
+    private val mavenDependencies: MutableMap<String, MavenDependency> = mutableMapOf()
+
+    fun analyseRepository(): Map<String, MavenDependency> {
+        val processingMavenDependencies: MutableMap<String, MavenDependency> = mutableMapOf()
+        val artifacts = mavenProject.artifacts as Set<Artifact> // Includes transitive dependencies
         artifacts.forEach {
-            processArtifact(it, processingMavenDependencies, processingExtraDependencies)
+            processArtifact(it, processingMavenDependencies)
         }
 
-        return Pair(processingMavenDependencies, processingExtraDependencies)
+        return processingMavenDependencies
     }
 
     private fun processArtifact(
             artifact: Artifact,
-            processingMavenDependencies: MutableMap<String, String>,
-            processingExtraDependencies: MutableSet<String>
+            processingMavenDependencies: MutableMap<String, MavenDependency>
     ) {
 
         val identifier = (artifact.groupId + "." + artifact.artifactId).replace(".", File.separator)
@@ -43,10 +45,11 @@ class MavenRepositoryAnalyser(
                 val jarFile = JarFile(file)
                 val entries = jarFile.entries()
                 for (entry in entries) {
-                    processingMavenDependencies[entry.name] = file.absolutePath
-                    if (entry.name.contains("nimbuscore/annotation/annotations")) {
-                        val nimbusAnnotationDependency = entry.name.replace('/', '.').substringBefore(".class")
-                        processingExtraDependencies.add(nimbusAnnotationDependency)
+                    val mavenDependency = mavenDependencies.getOrPut(file.absolutePath) { MavenDependency(file.absolutePath) }
+                    processingMavenDependencies[entry.name] = mavenDependency
+
+                    if (entry.name.endsWith(".driver", ignoreCase = true)) {
+                        mavenDependency.requiredClasses.add(entry.name)
                     }
                 }
             }

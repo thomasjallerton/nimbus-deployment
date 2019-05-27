@@ -3,6 +3,6 @@ package assembly.models
 import java.util.jar.JarOutputStream
 
 data class JarDependency(
-        val classOutputs:MutableMap<String, MutableList<JarOutputStream>> = mutableMapOf(),
-        var allClasses: MutableList<JarOutputStream> = mutableListOf()
+        val specificClasses: MutableMap<String, MutableList<JarOutputStream>> = mutableMapOf(),
+        val allClasses: MutableList<JarOutputStream> = mutableListOf()
 )
