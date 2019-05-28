@@ -8,7 +8,7 @@ import java.io.File
 import java.io.InputStream
 import java.util.*
 
-class FunctionHasher {
+class FunctionHasher(private val targetDirectory: String) {
 
     private val alreadyProcessed: MutableMap<String, String?> = mutableMapOf()
 
@@ -41,7 +41,7 @@ class FunctionHasher {
     }
 
     private fun determineLocalPath(classPath: String): String {
-        return "target" + File.separator + "classes" + File.separator + classPath + ".class"
+        return targetDirectory + File.separator + classPath + ".class"
     }
 
     private fun getDependenciesOfFile(inputStream: InputStream): MutableSet<String> {

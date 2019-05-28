@@ -100,7 +100,7 @@ public class DeploymentMojo extends AbstractMojo {
 
         Map<String, DeployedFunctionInformation> newFunctions = new HashMap<>();
         DeploymentInformation newDeployment = new DeploymentInformation(nimbusState.getCompilationTimeStamp(), newFunctions);
-        FunctionHasher functionHasher = new FunctionHasher();
+        FunctionHasher functionHasher = new FunctionHasher(FileService.addDirectorySeparatorIfNecessary(mavenProject.getBuild().getOutputDirectory()));
         Map<String, String> versionToReplace = new HashMap<>();
         String s3MostRecentDeployedTimestamp = s3Service.readFileFromS3(lambdaBucketName.getResult(), S3_DEPLOYMENT_PATH);
 
