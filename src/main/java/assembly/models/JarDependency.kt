@@ -4,5 +4,5 @@ import java.util.jar.JarOutputStream
 
 data class JarDependency(
         val specificClasses: MutableMap<String, MutableList<JarOutputStream>> = mutableMapOf(),
-        val allClasses: MutableList<JarOutputStream> = mutableListOf()
+        val allClasses: MutableSet<JarOutputStream> = mutableSetOf()
 )

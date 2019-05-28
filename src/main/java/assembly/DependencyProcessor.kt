@@ -59,7 +59,7 @@ class DependencyProcessor(
                 val externalDependency = assemblyDependencies.externalDependencies.getOrPut(jarFilePath) { JarDependency() }
                 if (forceEntireJar.contains(dependency) || addEntireJars) {
                     externalDependency.allClasses.add(targetJar)
-                } else {
+                } else if (!externalDependency.allClasses.contains(targetJar)) {
                     externalDependency.specificClasses.getOrPut(dependency) { mutableListOf() }.add(targetJar)
                     if (!alreadyProcessedMavenDependency.contains(mavenDependency)) {
                         mavenDependency.requiredClasses.forEach {
@@ -126,7 +126,8 @@ class DependencyProcessor(
     }
 
     // Returns a set of possible dependencies
-    // Dependencies of form 'path.path.path.ClassName)
+    // Dependencies of form 'path.path.path.ClassName' (if class)
+    // Or path/path/path/file.extension (if other type of file)
     private fun getDependenciesOfFile(inputStream: InputStream): MutableSet<String> {
         val cf = ClassFile(DataInputStream(inputStream))
         val constPool = cf.constPool

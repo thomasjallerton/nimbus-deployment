@@ -48,6 +48,8 @@ class JarsCreator(
 
     private fun addFromJarToJar(jarFilePath: String, jarDependencies: JarDependency, alreadyAdded: MutableSet<String>, drivers: Map<JarOutputStream, JarDrivers>) {
         val jarFile = JarFile(jarFilePath)
+        val justAdded: MutableSet<String> = mutableSetOf()
+
         if (jarDependencies.allClasses.isNotEmpty()) {
             for (entry in jarFile.entries()) {
                 if (entry.name != "META-INF/MANIFEST.MF" && entry.name != "META-INF") {
@@ -58,26 +60,28 @@ class JarsCreator(
                         }
                     } else if (!alreadyAdded.contains(entry.name)) {
                         addInputStreamToJars(entry.name, entry.lastModifiedTime.toMillis(), jarFile.getInputStream(entry), jarDependencies.allClasses)
-                        alreadyAdded.add(entry.name)
-                    }
-                }
-            }
-        } else {
-            jarDependencies.specificClasses.forEach { (dependency, targets) ->
-                if (!alreadyAdded.contains(dependency)) {
-                    val entry = jarFile.getJarEntry(dependency)
-                    if (dependency.endsWith(".driver", ignoreCase = true)) {
-                        val contents = jarFile.getInputStream(entry).bufferedReader().use { it.readText() }
-                        targets.forEach {
-                            drivers[it]?.addDriver(entry.name, contents)
-                        }
-                    } else if (!alreadyAdded.contains(dependency)) {
-                        addInputStreamToJars(dependency, entry.lastModifiedTime.toMillis(), jarFile.getInputStream(entry), targets)
-                        alreadyAdded.add(dependency)
+                        justAdded.add(entry.name)
                     }
                 }
             }
         }
+        jarDependencies.specificClasses.forEach { (dependency, targets) ->
+            if (!alreadyAdded.contains(dependency)) {
+                val entry = jarFile.getJarEntry(dependency)
+                if (dependency.endsWith(".driver", ignoreCase = true)) {
+                    val contents = jarFile.getInputStream(entry).bufferedReader().use { it.readText() }
+                    targets.forEach {
+                        if (!jarDependencies.allClasses.contains(it)) drivers[it]?.addDriver(entry.name, contents)
+                    }
+                } else if (!alreadyAdded.contains(dependency)) {
+                    val notProcessedTargets = targets.filter { !jarDependencies.allClasses.contains(it) }
+                    addInputStreamToJars(dependency, entry.lastModifiedTime.toMillis(), jarFile.getInputStream(entry), notProcessedTargets)
+                    justAdded.add(dependency)
+                }
+            }
+        }
+
+        alreadyAdded.addAll(justAdded)
     }
 
     private fun addLocalClassToJar(jarPath: String, targets: List<JarOutputStream>) {
@@ -96,7 +100,7 @@ class JarsCreator(
     }
 
 
-    private fun addInputStreamToJars(path: String, lastModifiedTime: Long, inputStream: InputStream, targets: List<JarOutputStream>) {
+    private fun addInputStreamToJars(path: String, lastModifiedTime: Long, inputStream: InputStream, targets: Iterable<JarOutputStream>) {
         val newEntry = JarEntry(path)
 
         newEntry.time = lastModifiedTime
