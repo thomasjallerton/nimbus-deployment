@@ -114,31 +114,36 @@ public class DeploymentMojo extends AbstractMojo {
             if (deploymentInformation.getMostRecentCompilationTimestamp().equals(s3MostRecentDeployedTimestamp)) {
                 //This means that the most recent deployment was done on this machine and we can properly process updated functions
                 for (HandlerInformation handlerInformation : nimbusState.getHandlerFiles()) {
-                    String classPath = handlerInformation.getHandlerClassPath();
-                    DeployedFunctionInformation functionDeployment = functionDeployments.get(classPath);
-                    String currentHash = functionHasher.determineFunctionHash(classPath);
+                    if (handlerInformation.getStages().contains(stage)) {
+                        String classPath = handlerInformation.getHandlerClassPath();
+                        DeployedFunctionInformation functionDeployment = functionDeployments.get(classPath);
+                        String currentHash = functionHasher.determineFunctionHash(classPath);
 
-                    if (functionDeployment == null || !currentHash.equals(functionDeployment.getMostRecentDeployedHash())) {
+                        if (functionDeployment == null || !currentHash.equals(functionDeployment.getMostRecentDeployedHash())) {
+                            functionsToDeploy.add(handlerInformation);
+                            String version = nimbusState.getCompilationTimeStamp() + "/" + handlerInformation.getHandlerFile();
+                            DeployedFunctionInformation newFunction = new DeployedFunctionInformation(version, currentHash);
+                            newFunctions.put(classPath, newFunction);
+                            versionToReplace.put(handlerInformation.getReplacementVariable(), version);
+                        } else {
+                            newFunctions.put(classPath, functionDeployment);
+                            versionToReplace.put(handlerInformation.getReplacementVariable(), functionDeployment.getMostRecentDeployedVersion());
+                        }
+                    }
+                }
+            } else {
+                for (HandlerInformation handlerInformation : nimbusState.getHandlerFiles()) {
+                    if (handlerInformation.getStages().contains(stage)) {
+
+                        String classPath = handlerInformation.getHandlerClassPath();
+                        String currentHash = functionHasher.determineFunctionHash(classPath);
+
                         functionsToDeploy.add(handlerInformation);
                         String version = nimbusState.getCompilationTimeStamp() + "/" + handlerInformation.getHandlerFile();
                         DeployedFunctionInformation newFunction = new DeployedFunctionInformation(version, currentHash);
                         newFunctions.put(classPath, newFunction);
                         versionToReplace.put(handlerInformation.getReplacementVariable(), version);
-                    } else {
-                        newFunctions.put(classPath, functionDeployment);
-                        versionToReplace.put(handlerInformation.getReplacementVariable(), functionDeployment.getMostRecentDeployedVersion());
                     }
-                }
-            } else {
-                for (HandlerInformation handlerInformation : nimbusState.getHandlerFiles()) {
-                    String classPath = handlerInformation.getHandlerClassPath();
-                    String currentHash = functionHasher.determineFunctionHash(classPath);
-
-                    functionsToDeploy.add(handlerInformation);
-                    String version = nimbusState.getCompilationTimeStamp() + "/" + handlerInformation.getHandlerFile();
-                    DeployedFunctionInformation newFunction = new DeployedFunctionInformation(version, currentHash);
-                    newFunctions.put(classPath, newFunction);
-                    versionToReplace.put(handlerInformation.getReplacementVariable(), version);
                 }
             }
 

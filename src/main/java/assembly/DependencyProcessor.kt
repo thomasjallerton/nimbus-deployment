@@ -14,6 +14,10 @@ import java.io.InputStream
 import java.util.HashSet
 import java.util.jar.JarFile
 import java.util.jar.JarOutputStream
+import java.io.InputStreamReader
+import java.io.BufferedReader
+
+
 
 class DependencyProcessor(
         private val mavenDependencies: Map<String, MavenDependency>,
@@ -31,7 +35,7 @@ class DependencyProcessor(
             val targetJar = pair.second
             val handlerStream = getClassFile(classPathToJarPath(handler.handlerClassPath))!!
 
-            val dependencies = getDependenciesOfFile(handlerStream)
+            val dependencies = getDependenciesOfClassFile(handlerStream)
             dependencies.addAll(
                     handler.usesClients.flatMap { it.toClassPaths() }.map { classPathToJarPath(it) }
             )
@@ -96,6 +100,15 @@ class DependencyProcessor(
         return jarFile.getInputStream(jarEntry)
     }
 
+    private fun getOtherFile(path: String): InputStream? {
+        val jarFilePath = mavenDependencies[path]?.filePath ?: return null
+
+        val jarFile = JarFile(jarFilePath)
+        val jarEntry = jarFile.getJarEntry(path)
+        if (jarEntry.isDirectory) return null
+        return jarFile.getInputStream(jarEntry)
+    }
+
     //Return JAR path of files
     private fun getRecursiveDependencies(jarPaths: Set<String>, clients: Set<ClientType>): Set<String> {
         val dependencies: MutableSet<String> = mutableSetOf()
@@ -112,8 +125,13 @@ class DependencyProcessor(
             val directDependencies = if (jarPath == "com/nimbusframework/nimbuscore/clients/ClientBuilder.class") {
                 EMPTY_CLIENTS
             } else {
-                val inputStream = getClassFile(jarPath) ?: continue
-                getDependenciesOfFile(inputStream)
+                val classInputStream = getClassFile(jarPath)
+                if (classInputStream != null) {
+                    getDependenciesOfClassFile(classInputStream)
+                } else {
+                    val handlerInputStream = getOtherFile(jarPath) ?: continue
+                    getDependenciesOfHandlerFile(handlerInputStream)
+                }
             }
 
             val recursiveDependencies = getRecursiveDependencies(directDependencies, clients)
@@ -128,7 +146,7 @@ class DependencyProcessor(
     // Returns a set of possible dependencies
     // Dependencies of form 'path.path.path.ClassName' (if class)
     // Or path/path/path/file.extension (if other type of file)
-    private fun getDependenciesOfFile(inputStream: InputStream): MutableSet<String> {
+    private fun getDependenciesOfClassFile(inputStream: InputStream): MutableSet<String> {
         val cf = ClassFile(DataInputStream(inputStream))
         val constPool = cf.constPool
         val dependencies = HashSet<String>()
@@ -166,6 +184,19 @@ class DependencyProcessor(
             }
         }
         inputStream.close()
+        return dependencies
+    }
+
+    private fun getDependenciesOfHandlerFile(inputStream: InputStream): Set<String> {
+        val dependencies = HashSet<String>()
+
+        inputStream.bufferedReader().useLines {
+            lines ->
+            lines.forEach {
+                addAnyFileToDependencySet(it, dependencies)
+            }
+        }
+
         return dependencies
     }
 
