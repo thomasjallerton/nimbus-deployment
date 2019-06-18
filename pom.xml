@@ -4,7 +4,7 @@
 
     <groupId>com.nimbusframework</groupId>
     <artifactId>nimbus-deployment-maven-plugin</artifactId>
-    <version>0.8-SNAPSHOT</version>
+    <version>0.8</version>
 
     <packaging>maven-plugin</packaging>
 
@@ -33,7 +33,7 @@
         <connection>scm:git:git://github.com/thomasjallerton/nimbusdeployment.git</connection>
         <developerConnection>scm:git:ssh://github.com:thomasjallerton/nimbusdeployment.git</developerConnection>
         <url>http://github.com/thomasjallerton/nimbusdeployment/tree/master</url>
-        <tag>HEAD</tag>
+        <tag>nimbus-deployment-maven-plugin-0.8</tag>
     </scm>
 
     <distributionManagement>
