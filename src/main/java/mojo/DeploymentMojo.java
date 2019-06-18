@@ -51,6 +51,8 @@ public class DeploymentMojo extends AbstractMojo {
     @Parameter(property = "localrepository", defaultValue = "${repositorySystemSession}")
     private RepositorySystemSession repoSession;
 
+    @Parameter(property = "addEntireJar", defaultValue = "false")
+    private String addEntireJar;
 
     @Parameter(defaultValue = "${project.remotePluginRepositories}")
     private List<RemoteRepository> remoteRepos;
@@ -98,49 +100,55 @@ public class DeploymentMojo extends AbstractMojo {
 
         Map<String, DeployedFunctionInformation> newFunctions = new HashMap<>();
         DeploymentInformation newDeployment = new DeploymentInformation(nimbusState.getCompilationTimeStamp(), newFunctions);
-        FunctionHasher functionHasher = new FunctionHasher();
+        FunctionHasher functionHasher = new FunctionHasher(FileService.addDirectorySeparatorIfNecessary(mavenProject.getBuild().getOutputDirectory()));
         Map<String, String> versionToReplace = new HashMap<>();
         String s3MostRecentDeployedTimestamp = s3Service.readFileFromS3(lambdaBucketName.getResult(), S3_DEPLOYMENT_PATH);
 
         //Assemble project if necessary
         if (nimbusState.getAssemble()) {
-            Assembler assembler = new Assembler(mavenProject, repoSession, logger);
+            boolean addEntireJarBool = Boolean.parseBoolean(addEntireJar);
+            Assembler assembler = new Assembler(mavenProject, repoSession, addEntireJarBool, logger);
             Set<HandlerInformation> functionsToDeploy = new HashSet<>();
 
             Map<String, DeployedFunctionInformation> functionDeployments = deploymentInformation.getMostRecentDeployedFunctions();
             if (deploymentInformation.getMostRecentCompilationTimestamp().equals(s3MostRecentDeployedTimestamp)) {
                 //This means that the most recent deployment was done on this machine and we can properly process updated functions
                 for (HandlerInformation handlerInformation : nimbusState.getHandlerFiles()) {
-                    String classPath = handlerInformation.getHandlerClassPath();
-                    DeployedFunctionInformation functionDeployment = functionDeployments.get(classPath);
-                    String currentHash = functionHasher.determineFunctionHash(classPath);
+                    if (handlerInformation.getStages().contains(stage)) {
+                        String classPath = handlerInformation.getHandlerClassPath();
+                        DeployedFunctionInformation functionDeployment = functionDeployments.get(classPath);
+                        String currentHash = functionHasher.determineFunctionHash(classPath);
 
-                    if (functionDeployment == null || !currentHash.equals(functionDeployment.getMostRecentDeployedHash())) {
+                        if (functionDeployment == null || !currentHash.equals(functionDeployment.getMostRecentDeployedHash())) {
+                            functionsToDeploy.add(handlerInformation);
+                            String version = nimbusState.getCompilationTimeStamp() + "/" + handlerInformation.getHandlerFile();
+                            DeployedFunctionInformation newFunction = new DeployedFunctionInformation(version, currentHash);
+                            newFunctions.put(classPath, newFunction);
+                            versionToReplace.put(handlerInformation.getReplacementVariable(), version);
+                        } else {
+                            newFunctions.put(classPath, functionDeployment);
+                            versionToReplace.put(handlerInformation.getReplacementVariable(), functionDeployment.getMostRecentDeployedVersion());
+                        }
+                    }
+                }
+            } else {
+                for (HandlerInformation handlerInformation : nimbusState.getHandlerFiles()) {
+                    if (handlerInformation.getStages().contains(stage)) {
+
+                        String classPath = handlerInformation.getHandlerClassPath();
+                        String currentHash = functionHasher.determineFunctionHash(classPath);
+
                         functionsToDeploy.add(handlerInformation);
                         String version = nimbusState.getCompilationTimeStamp() + "/" + handlerInformation.getHandlerFile();
                         DeployedFunctionInformation newFunction = new DeployedFunctionInformation(version, currentHash);
                         newFunctions.put(classPath, newFunction);
                         versionToReplace.put(handlerInformation.getReplacementVariable(), version);
-                    } else {
-                        newFunctions.put(classPath, functionDeployment);
-                        versionToReplace.put(handlerInformation.getReplacementVariable(), functionDeployment.getMostRecentDeployedVersion());
                     }
-                }
-            } else {
-                for (HandlerInformation handlerInformation : nimbusState.getHandlerFiles()) {
-                    String classPath = handlerInformation.getHandlerClassPath();
-                    String currentHash = functionHasher.determineFunctionHash(classPath);
-
-                    functionsToDeploy.add(handlerInformation);
-                    String version = nimbusState.getCompilationTimeStamp() + "/" + handlerInformation.getHandlerFile();
-                    DeployedFunctionInformation newFunction = new DeployedFunctionInformation(version, currentHash);
-                    newFunctions.put(classPath, newFunction);
-                    versionToReplace.put(handlerInformation.getReplacementVariable(), version);
                 }
             }
 
 
-            System.out.println("There are " + functionsToDeploy.size() + " functions to deploy");
+            logger.info("There are " + functionsToDeploy.size() + " functions to deploy");
             assembler.assembleProject(functionsToDeploy);
 
             int numberOfHandlers = nimbusState.getHandlerFiles().size();
@@ -231,7 +239,11 @@ public class DeploymentMojo extends AbstractMojo {
         }
 
         if (nimbusState.getAfterDeployments().size() > 0) {
-            logger.info("Starting after deployment script");
+            if (nimbusState.getAfterDeployments().size() == 1) {
+                logger.info("Starting after deployment script");
+            } else {
+                logger.info("Starting after deployment scripts");
+            }
 
             LambdaService lambdaClient = new LambdaService(logger, region);
 
