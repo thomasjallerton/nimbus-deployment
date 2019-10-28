@@ -39,7 +39,7 @@ public class DeploymentMojo extends AbstractMojo {
     private String stage;
 
     @Parameter(property = "shadedJarPath", defaultValue = "target/functions.jar")
-    private String lambdaPath;
+    private String shadedJarPath;
 
     @Parameter(property = "compiledSourcePath", defaultValue = "target/generated-sources/annotations/")
     private String compiledSourcePath;
@@ -48,7 +48,7 @@ public class DeploymentMojo extends AbstractMojo {
     @Component
     private RepositorySystem repoSystem;
 
-    @Parameter(property = "localrepository", defaultValue = "${repositorySystemSession}")
+    @Parameter(property = "repoSession", defaultValue = "${repositorySystemSession}")
     private RepositorySystemSession repoSession;
 
     @Parameter(property = "addEntireJar", defaultValue = "false")
@@ -176,7 +176,7 @@ public class DeploymentMojo extends AbstractMojo {
             }
 
             logger.info("Uploading lambda file");
-            boolean uploadSuccessful = s3Service.uploadFileToCompilationFolder(lambdaBucketName.getResult(), lambdaPath, "lambdacode");
+            boolean uploadSuccessful = s3Service.uploadFileToCompilationFolder(lambdaBucketName.getResult(), shadedJarPath, "lambdacode");
             if (!uploadSuccessful) throw new MojoFailureException("Failed uploading lambda code");
         }
 
