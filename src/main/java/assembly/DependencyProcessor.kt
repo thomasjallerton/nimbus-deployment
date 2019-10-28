@@ -4,7 +4,6 @@ import assembly.models.AssemblyDependencies
 import assembly.models.JarDependency
 import assembly.models.LocalResource
 import assembly.models.MavenDependency
-import configuration.EMPTY_CLIENTS
 import javassist.bytecode.ClassFile
 import javassist.bytecode.ConstPool
 import persisted.HandlerInformation
@@ -14,9 +13,6 @@ import java.io.InputStream
 import java.util.HashSet
 import java.util.jar.JarFile
 import java.util.jar.JarOutputStream
-import java.io.InputStreamReader
-import java.io.BufferedReader
-
 
 
 class DependencyProcessor(
@@ -122,17 +118,14 @@ class DependencyProcessor(
             alreadyProcessed[jarPath] = results
 
             //This is required if clients are declared in fields they do not throw class not found errors if the client is not used
-            val directDependencies = if (jarPath == "com/nimbusframework/nimbuscore/clients/ClientBuilder.class") {
-                EMPTY_CLIENTS
+            val classInputStream = getClassFile(jarPath)
+            val directDependencies = if (classInputStream != null) {
+                getDependenciesOfClassFile(classInputStream)
             } else {
-                val classInputStream = getClassFile(jarPath)
-                if (classInputStream != null) {
-                    getDependenciesOfClassFile(classInputStream)
-                } else {
-                    val handlerInputStream = getOtherFile(jarPath) ?: continue
-                    getDependenciesOfHandlerFile(handlerInputStream)
-                }
+                val handlerInputStream = getOtherFile(jarPath) ?: continue
+                getDependenciesOfHandlerFile(handlerInputStream)
             }
+
 
             val recursiveDependencies = getRecursiveDependencies(directDependencies, clients)
             results.addAll(directDependencies)
@@ -190,8 +183,7 @@ class DependencyProcessor(
     private fun getDependenciesOfHandlerFile(inputStream: InputStream): Set<String> {
         val dependencies = HashSet<String>()
 
-        inputStream.bufferedReader().useLines {
-            lines ->
+        inputStream.bufferedReader().useLines { lines ->
             lines.forEach {
                 addAnyFileToDependencySet(it, dependencies)
             }

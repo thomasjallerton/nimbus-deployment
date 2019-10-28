@@ -21,10 +21,7 @@ open class ZipOutputStreamAsync(out: OutputStream, charset: Charset?) : Deflater
      */
     val DEFLATED = ZipEntry.DEFLATED
 
-    private val inhibitZip64 = java.lang.Boolean.parseBoolean(
-            java.security.AccessController.doPrivileged(
-                    sun.security.action.GetPropertyAction(
-                            "jdk.util.zip.inhibitZip64", "false")))
+    private val inhibitZip64 = false
 
     private class XEntry(internal val entry: ZipEntry, internal val offset: Long)
 
@@ -171,8 +168,6 @@ open class ZipOutputStreamAsync(out: OutputStream, charset: Charset?) : Deflater
         if (!names.add(e.name)) {
             throw ZipException("duplicate entry: " + e.name)
         }
-        if (zc.isUTF8)
-            e.flag = e.flag or EFS
         current = XEntry(e, written)
         xentries.add(current)
         writeLOC(current!!)
