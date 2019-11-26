@@ -34,13 +34,28 @@ class MavenRepositoryAnalyser(
 
         val identifier = (artifact.groupId + "." + artifact.artifactId).replace(".", File.separator)
 
-        val directoryPath = localRepoPath + File.separator + identifier + File.separator + artifact.version
+        val files = File(toDirectoryPath(identifier, artifact)).listFiles()
 
-        val directory = File(directoryPath)
+        if (files != null) {
+            processDirectory(files, processingMavenDependencies)
+            return
+        }
 
-        if (directory.listFiles() == null) return
+        //Used for javax.inject (path is javax/inject/javax.inject)
+        val secondIdentifierType = artifact.groupId.replace(".", File.separator) + File.separator + artifact.artifactId
+        val secondFiles = File(toDirectoryPath(secondIdentifierType, artifact)).listFiles()
+        if (secondFiles != null) {
+            processDirectory(secondFiles, processingMavenDependencies)
+            return
+        }
+    }
 
-        directory.listFiles().forEach { file ->
+    private fun toDirectoryPath(identifier: String, artifact: Artifact): String {
+        return localRepoPath + File.separator + identifier + File.separator + artifact.version
+    }
+
+    private fun processDirectory(files: Array<out File>, processingMavenDependencies: MutableMap<String, MavenDependency>) {
+        files.forEach { file ->
             if (file.extension == "jar") {
                 val jarFile = JarFile(file)
                 val entries = jarFile.entries()

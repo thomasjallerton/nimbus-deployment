@@ -40,7 +40,8 @@ class DependencyProcessor(
 
             dependencies.addAll(jarPathExtraDependencies)
 
-            dependencies.addAll(getRecursiveDependencies(dependencies, handler.usesClients))
+            val stringDependencies = getRecursiveDependencies(dependencies, handler.usesClients)
+            dependencies.addAll(stringDependencies)
 
             addToAssemblyDependencies(dependencies, jarPathExtraDependencies, assemblyDependencies, targetJar)
         }
