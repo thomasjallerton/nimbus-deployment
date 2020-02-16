@@ -1,10 +1,10 @@
 package assembly
 
 import assembly.models.MavenDependency
+import com.nimbusframework.nimbuscore.persisted.HandlerInformation
 import org.apache.maven.plugin.logging.Log
 import org.apache.maven.project.MavenProject
 import org.eclipse.aether.RepositorySystemSession
-import persisted.HandlerInformation
 import services.FileService
 import java.io.File
 import java.io.FileOutputStream

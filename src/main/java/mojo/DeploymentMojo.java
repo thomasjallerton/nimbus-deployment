@@ -2,6 +2,10 @@ package mojo;
 
 import assembly.Assembler;
 import assembly.FunctionHasher;
+import com.nimbusframework.nimbuscore.persisted.ExportInformation;
+import com.nimbusframework.nimbuscore.persisted.FileUploadDescription;
+import com.nimbusframework.nimbuscore.persisted.HandlerInformation;
+import com.nimbusframework.nimbuscore.persisted.NimbusState;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;

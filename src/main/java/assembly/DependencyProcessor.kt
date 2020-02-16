@@ -4,9 +4,10 @@ import assembly.models.AssemblyDependencies
 import assembly.models.JarDependency
 import assembly.models.LocalResource
 import assembly.models.MavenDependency
+import com.nimbusframework.nimbuscore.persisted.ClientType
+import com.nimbusframework.nimbuscore.persisted.HandlerInformation
 import javassist.bytecode.ClassFile
 import javassist.bytecode.ConstPool
-import persisted.HandlerInformation
 import java.io.DataInputStream
 import java.io.File
 import java.io.InputStream

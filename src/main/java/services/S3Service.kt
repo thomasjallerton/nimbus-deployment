@@ -4,8 +4,8 @@ import com.amazonaws.AmazonServiceException
 import com.amazonaws.SdkClientException
 import com.amazonaws.services.s3.AmazonS3ClientBuilder
 import com.amazonaws.services.s3.model.ListVersionsRequest
+import com.nimbusframework.nimbuscore.persisted.NimbusState
 import org.apache.maven.plugin.logging.Log
-import persisted.NimbusState
 import java.io.File
 import java.lang.Exception
 import java.net.URL

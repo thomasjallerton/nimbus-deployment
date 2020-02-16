@@ -1,13 +1,11 @@
 package services
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.nimbusframework.nimbuscore.persisted.NimbusState
 import configuration.MOST_RECENT_DEPLOYMENT
 import configuration.NIMBUS_STATE
 import org.apache.maven.plugin.logging.Log
 import persisted.DeploymentInformation
-import persisted.NimbusState
-import software.amazon.ion.system.IonTextWriterBuilder.json
-
 
 
 class PersistedStateService(private val logger: Log, private val compiledSourcePath: String) {
@@ -18,7 +16,7 @@ class PersistedStateService(private val logger: Log, private val compiledSourceP
             fileService.getFileText(compiledSourcePath + NIMBUS_STATE)
         } catch (e: Exception) {
             logger.error("Couldn't open nimbus state file, must have compiled code beforehand")
-            return NimbusState()
+            throw e
         }
         val mapper = ObjectMapper()
 
@@ -26,9 +24,8 @@ class PersistedStateService(private val logger: Log, private val compiledSourceP
             return mapper.readValue(stateText, NimbusState::class.java)
         } catch (e: Exception) {
             logger.error(e)
+            throw e
         }
-
-        return NimbusState()
     }
 
     fun getDeploymentInformation(stage: String): DeploymentInformation {

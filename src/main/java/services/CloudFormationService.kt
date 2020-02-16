@@ -6,8 +6,6 @@ import com.amazonaws.services.cloudformation.model.*
 import configuration.STACK_CREATE_FILE
 import org.apache.maven.plugin.MojoFailureException
 import org.apache.maven.plugin.logging.Log
-import persisted.DeployedFunctionInformation
-import persisted.HandlerInformation
 import java.net.URL
 
 class CloudFormationService(private val logger: Log, region: String) {
