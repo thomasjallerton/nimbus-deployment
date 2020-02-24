@@ -8,6 +8,7 @@ import com.nimbusframework.nimbuscore.persisted.NimbusState
 import org.apache.maven.plugin.logging.Log
 import java.io.File
 import java.lang.Exception
+import java.net.URI
 import java.net.URL
 
 class S3Service(
@@ -101,8 +102,8 @@ class S3Service(
         }
     }
 
-    fun getUrl(bucketName: String, s3Path: String): URL {
-        return s3Client.getUrl(bucketName, "nimbus/${config.projectName}/" + config.compilationTimeStamp + "/" + s3Path)
+    fun getUri(bucketName: String, s3Path: String): URI {
+        return s3Client.getUrl(bucketName, "nimbus/${config.projectName}/" + config.compilationTimeStamp + "/" + s3Path).toURI()
     }
 
     fun deleteBucket(bucketName: String) {

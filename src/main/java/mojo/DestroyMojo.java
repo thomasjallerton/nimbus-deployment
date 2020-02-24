@@ -7,11 +7,7 @@ import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugin.logging.Log;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
-import services.CloudFormationService;
-import services.CloudFormationService.FindExportResponse;
-import services.FileService;
-import services.PersistedStateService;
-import services.S3Service;
+import services.*;
 
 import static configuration.ConfigurationKt.DEPLOYMENT_BUCKET_NAME;
 
@@ -45,7 +41,7 @@ public class DestroyMojo extends AbstractMojo {
         String stackName = nimbusState.getProjectName() + "-" + stage;
 
         logger.info(nimbusState.getProjectName() + "-" + stage + "-" + DEPLOYMENT_BUCKET_NAME);
-        FindExportResponse bucketName = cloudFormationService.findExport(
+        StackService.FindExportResponse bucketName = cloudFormationService.findExport(
                  nimbusState.getProjectName() + "-" + stage + "-" + DEPLOYMENT_BUCKET_NAME);
 
         if (bucketName.getSuccessful()) {

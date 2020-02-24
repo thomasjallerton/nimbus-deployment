@@ -2,10 +2,7 @@ package mojo;
 
 import assembly.Assembler;
 import assembly.FunctionHasher;
-import com.nimbusframework.nimbuscore.persisted.ExportInformation;
-import com.nimbusframework.nimbuscore.persisted.FileUploadDescription;
-import com.nimbusframework.nimbuscore.persisted.HandlerInformation;
-import com.nimbusframework.nimbuscore.persisted.NimbusState;
+import com.nimbusframework.nimbuscore.persisted.*;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
@@ -20,11 +17,9 @@ import org.eclipse.aether.RepositorySystemSession;
 import org.eclipse.aether.repository.RemoteRepository;
 import persisted.*;
 import services.*;
-import services.CloudFormationService.CreateStackResponse;
-import services.CloudFormationService.FindExportResponse;
 
 import java.io.File;
-import java.net.URL;
+import java.net.URI;
 import java.util.*;
 
 import static configuration.ConfigurationKt.*;
@@ -69,22 +64,37 @@ public class DeploymentMojo extends AbstractMojo {
         logger = getLog();
     }
 
+    private StackService stackService;
+
+    private void initialise(NimbusState nimbusState) {
+        if (nimbusState.getCloudProvider() == CloudProvider.AWS) {
+            stackService = new CloudFormationService(logger, region);
+        } else if (nimbusState.getCloudProvider() == CloudProvider.AZURE) {
+            stackService = new AzureResourceManagerService(logger, region);
+        }
+    }
+
     public void execute() throws MojoExecutionException, MojoFailureException {
+        logger.info("Starting");
         String compiledSourcePathFixed = FileService.addDirectorySeparatorIfNecessary(compiledSourcePath);
         PersistedStateService persistedStateService = new PersistedStateService(logger, compiledSourcePathFixed);
 
         FileService fileService = new FileService(logger);
+        logger.info("Created File Service");
 
         NimbusState nimbusState = persistedStateService.getNimbusState();
         DeploymentInformation deploymentInformation = persistedStateService.getDeploymentInformation(stage);
 
-        CloudFormationService cloudFormationService = new CloudFormationService(logger, region);
+        logger.info("Got deployment information");
+        initialise(nimbusState);
+
+        logger.info("Initialised");
         S3Service s3Service = new S3Service(region, nimbusState, logger);
 
         String stackName = nimbusState.getProjectName() + "-" + stage;
         logger.info("Beginning deployment for project: " + nimbusState.getProjectName() + ", stage: " + stage);
         //Try to create stack
-        CreateStackResponse createSuccessful = cloudFormationService.createStack(stackName, stage, compiledSourcePathFixed);
+        StackService.CreateStackResponse createSuccessful = stackService.createStack(stackName, stage, compiledSourcePathFixed);
         if (!createSuccessful.getSuccessful()) throw new MojoFailureException("Unable to create stack");
 
         if (createSuccessful.getAlreadyExists()) {
@@ -92,12 +102,12 @@ public class DeploymentMojo extends AbstractMojo {
         } else {
             logger.info("Creating stack");
             logger.info("Polling stack create progress");
-            cloudFormationService.pollStackStatus(stackName, 0);
+            stackService.pollStackStatus(stackName, 0);
             logger.info("Stack created");
         }
 
 
-        FindExportResponse lambdaBucketName = cloudFormationService.findExport(
+        StackService.FindExportResponse lambdaBucketName = stackService.findExport(
                 nimbusState.getProjectName() + "-" + stage + "-" + DEPLOYMENT_BUCKET_NAME);
 
         if (!lambdaBucketName.getSuccessful()) throw new MojoFailureException("Unable to find deployment bucket");
@@ -187,7 +197,7 @@ public class DeploymentMojo extends AbstractMojo {
         persistedStateService.saveDeploymentInformation(newDeployment, stage);
         s3Service.uploadToS3(lambdaBucketName.getResult(), nimbusState.getCompilationTimeStamp(), S3_DEPLOYMENT_PATH);
 
-        File fixedUpdateTemplate = fileService.replaceInFile(versionToReplace, new File(compiledSourcePathFixed + STACK_UPDATE_FILE + "-" + stage + ".json"));
+        File fixedUpdateTemplate = fileService.replaceInFile(versionToReplace, new File(compiledSourcePathFixed + AWS_STACK_UPDATE_FILE + "-" + stage + ".json"));
 
         //Try to update stack
         logger.info("Uploading cloudformation file");
@@ -195,15 +205,15 @@ public class DeploymentMojo extends AbstractMojo {
         if (!cloudFormationUploadSuccessful)
             throw new MojoFailureException("Failed uploading cloudformation update code");
 
-        URL cloudformationUrl = s3Service.getUrl(lambdaBucketName.getResult(), "update-template");
+        URI cloudformationUri = s3Service.getUri(lambdaBucketName.getResult(), "update-template");
 
-        boolean updating = cloudFormationService.updateStack(stackName, cloudformationUrl);
+        boolean updating = stackService.updateStack(stackName, cloudformationUri);
 
         if (!updating) throw new MojoFailureException("Unable to update stack");
 
         logger.info("Updating stack");
 
-        cloudFormationService.pollStackStatus(stackName, 0);
+        stackService.pollStackStatus(stackName, 0);
 
         logger.info("Updated stack successfully, deployment complete");
 
@@ -214,7 +224,7 @@ public class DeploymentMojo extends AbstractMojo {
 
         List<ExportInformation> exports = nimbusState.getExports().getOrDefault(stage, new LinkedList<>());
         for (ExportInformation export : exports) {
-            FindExportResponse exportResponse = cloudFormationService.findExport(export.getExportName());
+            StackService.FindExportResponse exportResponse = stackService.findExport(export.getExportName());
             if (exportResponse.getSuccessful()) {
                 String result = exportResponse.getResult();
                 substitutionParams.put(export.getSubstitutionVariable(), result);

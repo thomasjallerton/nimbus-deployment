@@ -3,19 +3,20 @@ package services
 import com.amazonaws.services.cloudformation.AmazonCloudFormation
 import com.amazonaws.services.cloudformation.AmazonCloudFormationClientBuilder
 import com.amazonaws.services.cloudformation.model.*
-import configuration.STACK_CREATE_FILE
+import configuration.AWS_STACK_CREATE_FILE
 import org.apache.maven.plugin.MojoFailureException
 import org.apache.maven.plugin.logging.Log
+import java.net.URI
 import java.net.URL
 
-class CloudFormationService(private val logger: Log, region: String) {
+class CloudFormationService(private val logger: Log, region: String): StackService {
     private val client: AmazonCloudFormation = AmazonCloudFormationClientBuilder.standard()
             .withRegion(region)
             .build()
 
     private val fileService: FileService = FileService(logger)
 
-    fun findExport(exportName: String): FindExportResponse {
+    override fun findExport(exportName: String): StackService.FindExportResponse {
         val listExportsRequest = ListExportsRequest()
 
         try {
@@ -24,7 +25,7 @@ class CloudFormationService(private val logger: Log, region: String) {
 
             for (export in exports) {
                 if (export.name == exportName) {
-                    return FindExportResponse(true, export.value)
+                    return StackService.FindExportResponse(true, export.value)
                 }
             }
 
@@ -33,16 +34,14 @@ class CloudFormationService(private val logger: Log, region: String) {
         } catch (e: Exception) {
             logger.error(e.localizedMessage)
         }
-        return FindExportResponse(false, "")
+        return StackService.FindExportResponse(false, "")
     }
 
-    data class FindExportResponse(val successful: Boolean, val result: String)
-
-    fun updateStack(projectName: String, url: URL): Boolean {
+    override fun updateStack(projectName: String, uri: URI): Boolean {
         val updateStackRequest = UpdateStackRequest()
                 .withStackName(projectName)
                 .withCapabilities("CAPABILITY_NAMED_IAM")
-                .withTemplateURL(url.toString())
+                .withTemplateURL(uri.toURL().toString())
         return try {
             client.updateStack(updateStackRequest)
             true
@@ -53,26 +52,24 @@ class CloudFormationService(private val logger: Log, region: String) {
         }
     }
 
-    fun createStack(projectName: String, stage: String, compiledSourcesPath: String): CreateStackResponse {
-        val templateText = fileService.getFileText("$compiledSourcesPath$STACK_CREATE_FILE-$stage.json")
+    override fun createStack(projectName: String, stage: String, compiledSourcesPath: String): StackService.CreateStackResponse {
+        val templateText = fileService.getFileText("$compiledSourcesPath$AWS_STACK_CREATE_FILE-$stage.json")
         val createStackRequest = CreateStackRequest()
                 .withStackName(projectName)
                 .withCapabilities("CAPABILITY_NAMED_IAM")
                 .withTemplateBody(templateText)
         try {
             client.createStack(createStackRequest)
-            return CreateStackResponse(true, false)
+            return StackService.CreateStackResponse(true, false)
         } catch (e: AlreadyExistsException) {
-            return CreateStackResponse(true, true)
+            return StackService.CreateStackResponse(true, true)
         } catch (e: java.lang.Exception) {
             logger.error(e.localizedMessage)
         }
-        return CreateStackResponse(false, false)
+        return StackService.CreateStackResponse(false, false)
     }
 
-    data class CreateStackResponse(val successful: Boolean, val alreadyExists: Boolean)
-
-    fun deleteStack(stackName: String): Boolean {
+    override fun deleteStack(stackName: String): Boolean {
         val deleteStackRequest = DeleteStackRequest()
                 .withStackName(stackName)
 
@@ -85,7 +82,7 @@ class CloudFormationService(private val logger: Log, region: String) {
         }
     }
 
-    fun getStackStatus(stackName: String): String {
+    override fun getStackStatus(stackName: String): String {
         val describeStackRequest = DescribeStacksRequest()
                 .withStackName(stackName)
         try {
@@ -103,7 +100,7 @@ class CloudFormationService(private val logger: Log, region: String) {
         return "STACK_NOT_FOUND"
     }
 
-    fun getStackErrorReason(stackName: String): String {
+    override fun getStackErrorReason(stackName: String): String {
         val describeStackRequest = DescribeStackEventsRequest()
                 .withStackName(stackName)
 
@@ -120,7 +117,7 @@ class CloudFormationService(private val logger: Log, region: String) {
         return "Couldn't find error, look at CloudFormation stack log"
     }
 
-    fun isErrorStatus(stackStatus: String): Boolean {
+    override fun isErrorStatus(stackStatus: String): Boolean {
         return when (stackStatus) {
             "CREATE_FAILED" -> true
             "DELETE_FAILED" -> true
@@ -131,34 +128,32 @@ class CloudFormationService(private val logger: Log, region: String) {
         }
     }
 
-    fun canContinue(stackStatus: String): ContinueResponse {
+    override fun canContinue(stackStatus: String): StackService.ContinueResponse {
         return when (stackStatus) {
-            "CREATE_COMPLETE" -> ContinueResponse(true, false)
-            "CREATE_FAILED" -> ContinueResponse(true, true)
-            "CREATE_IN_PROGRESS" -> ContinueResponse(false, false)
-            "DELETE_COMPLETE" -> ContinueResponse(true, false)
-            "DELETE_FAILED" -> ContinueResponse(true, true)
-            "DELETE_IN_PROGRESS" -> ContinueResponse(false, false)
-            "REVIEW_IN_PROGRESS" -> ContinueResponse(false, false)
-            "ROLLBACK_COMPLETE" -> ContinueResponse(true, false)
-            "ROLLBACK_FAILED" -> ContinueResponse(true, true)
-            "ROLLBACK_IN_PROGRESS" -> ContinueResponse(false, false)
-            "UPDATE_COMPLETE" -> ContinueResponse(true, false)
-            "UPDATE_COMPLETE_CLEANUP_IN_PROGRESS" -> ContinueResponse(false, false)
-            "UPDATE_IN_PROGRESS" -> ContinueResponse(false, false)
-            "UPDATE_ROLLBACK_COMPLETE" -> ContinueResponse(true, true)
-            "UPDATE_ROLLBACK_COMPLETE_CLEANUP_IN_PROGRESS" -> ContinueResponse(false, false)
-            "UPDATE_ROLLBACK_FAILED" -> ContinueResponse(true, true)
-            "UPDATE_ROLLBACK_IN_PROGRESS" -> ContinueResponse(false, false)
-            "STACK_NOT_FOUND" -> ContinueResponse(true, false)
-            else -> ContinueResponse(false, false)
+            "CREATE_COMPLETE" -> StackService.ContinueResponse(true, false)
+            "CREATE_FAILED" -> StackService.ContinueResponse(true, true)
+            "CREATE_IN_PROGRESS" -> StackService.ContinueResponse(false, false)
+            "DELETE_COMPLETE" -> StackService.ContinueResponse(true, false)
+            "DELETE_FAILED" -> StackService.ContinueResponse(true, true)
+            "DELETE_IN_PROGRESS" -> StackService.ContinueResponse(false, false)
+            "REVIEW_IN_PROGRESS" -> StackService.ContinueResponse(false, false)
+            "ROLLBACK_COMPLETE" -> StackService.ContinueResponse(true, false)
+            "ROLLBACK_FAILED" -> StackService.ContinueResponse(true, true)
+            "ROLLBACK_IN_PROGRESS" -> StackService.ContinueResponse(false, false)
+            "UPDATE_COMPLETE" -> StackService.ContinueResponse(true, false)
+            "UPDATE_COMPLETE_CLEANUP_IN_PROGRESS" -> StackService.ContinueResponse(false, false)
+            "UPDATE_IN_PROGRESS" -> StackService.ContinueResponse(false, false)
+            "UPDATE_ROLLBACK_COMPLETE" -> StackService.ContinueResponse(true, true)
+            "UPDATE_ROLLBACK_COMPLETE_CLEANUP_IN_PROGRESS" -> StackService.ContinueResponse(false, false)
+            "UPDATE_ROLLBACK_FAILED" -> StackService.ContinueResponse(true, true)
+            "UPDATE_ROLLBACK_IN_PROGRESS" -> StackService.ContinueResponse(false, false)
+            "STACK_NOT_FOUND" -> StackService.ContinueResponse(true, false)
+            else -> StackService.ContinueResponse(false, false)
         }
     }
 
-    data class ContinueResponse(val canContinue: Boolean, val needErrorMessage: Boolean)
-
     @Throws(MojoFailureException::class)
-    fun pollStackStatus(projectName: String, count: Int = 0) {
+    override fun pollStackStatus(projectName: String, count: Int) {
         val status = getStackStatus(projectName)
         val continueResponse = canContinue(status)
 

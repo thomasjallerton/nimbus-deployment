@@ -3,6 +3,7 @@ package services
 import org.apache.maven.plugin.logging.Log
 import java.io.File
 import java.io.IOException
+import java.net.URI
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Paths
@@ -18,6 +19,10 @@ class FileService(private val logger: Log) {
 
     fun getFileText(path: String): String {
         return File(path).inputStream().bufferedReader().use{it.readText()}
+    }
+
+    fun getFileText(uri: URI): String {
+        return File(uri).inputStream().bufferedReader().use{it.readText()}
     }
 
     fun replaceInFile(wordsToReplace: Map<String, String?>, file: File): File {
