@@ -254,6 +254,7 @@
                     </execution>
                 </executions>
             </plugin>
+            <!-- Fails with Java 11
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-javadoc-plugin</artifactId>
@@ -266,7 +267,7 @@
                         </goals>
                     </execution>
                 </executions>
-            </plugin>
+            </plugin>-->
         </plugins>
     </build>
 
