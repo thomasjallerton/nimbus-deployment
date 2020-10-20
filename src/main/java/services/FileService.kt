@@ -11,10 +11,10 @@ import java.nio.file.Paths
 class FileService(private val logger: Log) {
 
     private val tempDir = System.getProperty("java.io.tmpdir")
-    private val tempPath = if (tempDir.endsWith(File.pathSeparator)) {
-        tempDir + "nimbus" + File.pathSeparator
+    private val tempPath = if (tempDir.endsWith(File.separator)) {
+        tempDir + "nimbus" + File.separator
     } else {
-        tempDir + File.pathSeparator + "nimbus" + File.pathSeparator
+        tempDir + File.separator + "nimbus" + File.separator
     }
 
     fun getFileText(path: String): String {
@@ -49,7 +49,7 @@ class FileService(private val logger: Log) {
     companion object {
         @JvmStatic
         fun addDirectorySeparatorIfNecessary(path: String): String {
-            if (path.endsWith(File.separatorChar)) return path
+            if (path.endsWith(File.separator)) return path
             return "$path${File.separator}"
         }
     }
