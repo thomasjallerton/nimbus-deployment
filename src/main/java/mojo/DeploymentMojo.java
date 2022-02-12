@@ -1,20 +1,15 @@
 package mojo;
 
-import assembly.Assembler;
 import assembly.FunctionHasher;
 import com.nimbusframework.nimbuscore.persisted.*;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugin.logging.Log;
-import org.apache.maven.plugins.annotations.Component;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.apache.maven.project.MavenProject;
-import org.eclipse.aether.RepositorySystem;
-import org.eclipse.aether.RepositorySystemSession;
-import org.eclipse.aether.repository.RemoteRepository;
 import persisted.*;
 import services.*;
 
@@ -43,18 +38,9 @@ public class DeploymentMojo extends AbstractMojo {
     @Parameter(property = "compiledSourcePath", defaultValue = "target/generated-sources/annotations/")
     private String compiledSourcePath;
 
-    //Assembly information
-    @Component
-    private RepositorySystem repoSystem;
-
-    @Parameter(property = "repoSession", defaultValue = "${repositorySystemSession}")
-    private RepositorySystemSession repoSession;
 
     @Parameter(property = "addEntireJar", defaultValue = "false")
     private String addEntireJar;
-
-    @Parameter(defaultValue = "${project.remotePluginRepositories}")
-    private List<RemoteRepository> remoteRepos;
 
     @Parameter(defaultValue = "${project}", readonly = true)
     private MavenProject mavenProject;
@@ -116,86 +102,22 @@ public class DeploymentMojo extends AbstractMojo {
         DeploymentInformation newDeployment = new DeploymentInformation(nimbusState.getCompilationTimeStamp(), newFunctions);
         FunctionHasher functionHasher = new FunctionHasher(FileService.addDirectorySeparatorIfNecessary(mavenProject.getBuild().getOutputDirectory()));
         Map<String, String> versionToReplace = new HashMap<>();
-        String s3MostRecentDeployedTimestamp = s3Service.readFileFromS3(lambdaBucketName.getResult(), S3_DEPLOYMENT_PATH);
 
-        //Assemble project if necessary
-        if (nimbusState.getAssemble()) {
-            boolean addEntireJarBool = Boolean.parseBoolean(addEntireJar);
-            Assembler assembler = new Assembler(mavenProject, repoSession, addEntireJarBool, logger);
-            Set<HandlerInformation> functionsToDeploy = new HashSet<>();
-
-            Map<String, DeployedFunctionInformation> functionDeployments = deploymentInformation.getMostRecentDeployedFunctions();
-            if (deploymentInformation.getMostRecentCompilationTimestamp().equals(s3MostRecentDeployedTimestamp)) {
-                //This means that the most recent deployment was done on this machine and we can properly process updated functions
-                for (HandlerInformation handlerInformation : nimbusState.getHandlerFiles()) {
-                    if (handlerInformation.getStages().contains(stage)) {
-                        String classPath = handlerInformation.getHandlerClassPath();
-                        DeployedFunctionInformation functionDeployment = functionDeployments.get(classPath);
-                        String currentHash = functionHasher.determineFunctionHash(classPath);
-
-                        if (functionDeployment == null || !currentHash.equals(functionDeployment.getMostRecentDeployedHash())) {
-                            functionsToDeploy.add(handlerInformation);
-                            String version = nimbusState.getCompilationTimeStamp() + "/" + handlerInformation.getHandlerFile();
-                            DeployedFunctionInformation newFunction = new DeployedFunctionInformation(version, currentHash);
-                            newFunctions.put(classPath, newFunction);
-                            versionToReplace.put(handlerInformation.getReplacementVariable(), version);
-                        } else {
-                            newFunctions.put(classPath, functionDeployment);
-                            versionToReplace.put(handlerInformation.getReplacementVariable(), functionDeployment.getMostRecentDeployedVersion());
-                        }
-                    }
-                }
-            } else {
-                for (HandlerInformation handlerInformation : nimbusState.getHandlerFiles()) {
-                    if (handlerInformation.getStages().contains(stage)) {
-
-                        String classPath = handlerInformation.getHandlerClassPath();
-                        String currentHash = functionHasher.determineFunctionHash(classPath);
-
-                        functionsToDeploy.add(handlerInformation);
-                        String version = nimbusState.getCompilationTimeStamp() + "/" + handlerInformation.getHandlerFile();
-                        DeployedFunctionInformation newFunction = new DeployedFunctionInformation(version, currentHash);
-                        newFunctions.put(classPath, newFunction);
-                        versionToReplace.put(handlerInformation.getReplacementVariable(), version);
-                    }
-                }
-            }
-
-
-            logger.info("There are " + functionsToDeploy.size() + " functions to deploy");
-            assembler.assembleProject(functionsToDeploy);
-
-            int numberOfHandlers = nimbusState.getHandlerFiles().size();
-            int deployingHandlers = functionsToDeploy.size();
-            if (deployingHandlers < numberOfHandlers) {
-                logger.info("Detected only " + deployingHandlers + " out of " + numberOfHandlers + " need to be deployed.");
-            }
-            int count = 1;
-            for (HandlerInformation handler : functionsToDeploy) {
-                logger.info("Uploading lambda handler " + count + "/" + deployingHandlers);
-                count++;
-                String path = FileService.addDirectorySeparatorIfNecessary(mavenProject.getBuild().getOutputDirectory()) + handler.getHandlerFile();
-                boolean uploadSuccessful = s3Service.uploadFileToCompilationFolder(lambdaBucketName.getResult(), path, handler.getHandlerFile());
-                if (!uploadSuccessful)
-                    throw new MojoFailureException("Failed uploading lambda code, have you run the assemble goal?");
-            }
-        } else {
-            for (HandlerInformation handlerInformation : nimbusState.getHandlerFiles()) {
-                String classPath = handlerInformation.getHandlerClassPath();
-                String currentHash = functionHasher.determineFunctionHash(classPath);
-                String version = nimbusState.getCompilationTimeStamp() + "/" + "lambdacode";
-                DeployedFunctionInformation newFunction = new DeployedFunctionInformation(version, currentHash);
-                newFunctions.put(classPath, newFunction);
-                versionToReplace.put(handlerInformation.getReplacementVariable(), version);
-            }
-
-            logger.info("Uploading lambda file");
-            boolean uploadSuccessful = s3Service.uploadFileToCompilationFolder(lambdaBucketName.getResult(), shadedJarPath, "lambdacode");
-            if (!uploadSuccessful) throw new MojoFailureException("Failed uploading lambda code");
+        for (HandlerInformation handlerInformation : nimbusState.getHandlerFiles()) {
+            String classPath = handlerInformation.getHandlerClassPath();
+            String currentHash = functionHasher.determineFunctionHash(classPath);
+            String version = nimbusState.getCompilationTimeStamp() + "/" + "lambdacode";
+            DeployedFunctionInformation newFunction = new DeployedFunctionInformation(version, currentHash);
+            newFunctions.put(classPath, newFunction);
+            versionToReplace.put(handlerInformation.getReplacementVariable(), version);
         }
 
+        logger.info("Uploading lambda file");
+        boolean uploadSuccessful = s3Service.uploadFileToCompilationFolder(lambdaBucketName.getResult(), shadedJarPath, "lambdacode");
+        if (!uploadSuccessful) throw new MojoFailureException("Failed uploading lambda code");
+
         persistedStateService.saveDeploymentInformation(newDeployment, stage);
-        s3Service.uploadToS3(lambdaBucketName.getResult(), nimbusState.getCompilationTimeStamp(), S3_DEPLOYMENT_PATH);
+        s3Service.uploadStringToS3(lambdaBucketName.getResult(), nimbusState.getCompilationTimeStamp(), S3_DEPLOYMENT_PATH);
 
         File fixedUpdateTemplate = fileService.replaceInFile(versionToReplace, new File(compiledSourcePathFixed + AWS_STACK_UPDATE_FILE + "-" + stage + ".json"));
 
@@ -242,12 +164,7 @@ public class DeploymentMojo extends AbstractMojo {
                     String localFile = fileUploadDescription.getLocalFile();
                     String targetFile = fileUploadDescription.getTargetFile();
 
-                    if (fileUploadDescription.getSubstituteVariables()) {
-                        s3Service.uploadToS3(bucketName, localFile, targetFile,
-                                (file) -> fileService.replaceInFile(substitutionParams, file));
-                    } else {
-                        s3Service.uploadToS3(bucketName, localFile, targetFile, (file) -> file);
-                    }
+                    s3Service.uploadFileToS3(bucketName, localFile, targetFile, substitutionParams, fileUploadDescription.getFileUploadVariableSubstitutionFileRegex());
                 }
             }
         }

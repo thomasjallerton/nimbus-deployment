@@ -9,7 +9,7 @@ import org.apache.maven.plugin.logging.Log
 import java.io.File
 import java.lang.Exception
 import java.net.URI
-import java.net.URL
+import java.util.regex.Pattern
 
 class S3Service(
         region: String,
@@ -21,6 +21,8 @@ class S3Service(
             .withRegion(region)
             .build()
 
+    private val fileService: FileService = FileService(logger)
+
     fun readFileFromS3(bucketName: String, s3Path: String): String {
         return try {
             val file = s3Client.getObject(bucketName, s3Path)
@@ -31,24 +33,34 @@ class S3Service(
     }
 
     fun uploadFileToCompilationFolder(bucketName: String, filePath: String, s3Path: String): Boolean {
-        return uploadToS3(bucketName, filePath, "nimbus/${config.projectName}/" +
-                config.compilationTimeStamp + "/" + s3Path) { file -> file}
+        val finalPath = "nimbus/${config.projectName}/" + config.compilationTimeStamp + "/" + s3Path
+        return uploadFileToS3(bucketName, filePath, finalPath)
     }
 
-    fun uploadToS3(bucketName: String, filePath: String, s3Path: String, fileTransformation: (File) -> File): Boolean {
+    fun uploadFileToS3(bucketName: String, filePath: String, s3Path: String, substitutionVariables: Map<String, String?> = mapOf(), substitutionRegex: String = ""): Boolean {
+        logger.info("Uploading $filePath to ${bucketName}/$s3Path")
         try {
             //Upload to S3
-
+            val compiledPattern = Pattern.compile(substitutionRegex)
+            val matcher: (String) -> Boolean = if (substitutionRegex.isNotEmpty()) {
+                { compiledPattern.matcher(it).matches() }
+            } else {
+                { false }
+            }
             val file = File(filePath)
             if (file.isFile) {
-                s3Client.putObject(bucketName, s3Path, fileTransformation(file))
+                if (matcher(file.name)) {
+                    s3Client.putObject(bucketName, s3Path, fileService.replaceInFile(substitutionVariables, file))
+                } else {
+                    s3Client.putObject(bucketName, s3Path, file)
+                }
             } else if (file.isDirectory){
                 val newPath = if (s3Path.endsWith("/") || s3Path.isEmpty()) {
                     s3Path
                 } else {
                     "$s3Path/"
                 }
-                uploadDirectoryToS3(bucketName, file, newPath, fileTransformation)
+                uploadDirectoryToS3(bucketName, file, newPath, substitutionVariables, matcher)
                 logger.info("Successfully uploaded directory $filePath")
             }
             return true
@@ -66,7 +78,7 @@ class S3Service(
         return false
     }
 
-    fun uploadToS3(bucketName: String, contents: String, s3Path: String): Boolean {
+    fun uploadStringToS3(bucketName: String, contents: String, s3Path: String): Boolean {
         try {
             //Upload to S3
 
@@ -86,7 +98,7 @@ class S3Service(
         return false
     }
 
-    private fun uploadDirectoryToS3(bucketName: String, directory: File, s3Path: String, fileTransformation: (File) -> File) {
+    private fun uploadDirectoryToS3(bucketName: String, directory: File, s3Path: String, substitutionVariables: Map<String, String?>, matcher: (String) -> Boolean) {
         for (file in directory.listFiles()) {
             val newPath = if (s3Path.isEmpty()) {
                 file.name
@@ -95,9 +107,13 @@ class S3Service(
             }
 
             if (file.isFile) {
-                s3Client.putObject(bucketName, newPath, fileTransformation(file))
+                if (matcher(file.name)) {
+                    s3Client.putObject(bucketName, newPath, fileService.replaceInFile(substitutionVariables, file))
+                } else {
+                    s3Client.putObject(bucketName, newPath, file)
+                }
             } else if (file.isDirectory){
-                uploadDirectoryToS3(bucketName, file, newPath, fileTransformation)
+                uploadDirectoryToS3(bucketName, file, newPath, substitutionVariables, matcher)
             }
         }
     }
