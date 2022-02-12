@@ -26,6 +26,7 @@ class FileService(private val logger: Log) {
     }
 
     fun replaceInFile(wordsToReplace: Map<String, String?>, file: File): File {
+        logger.info("Attempting to replace variables in ${file.name}")
         val charset = StandardCharsets.UTF_8
 
         var content = String(file.readBytes(), charset)
