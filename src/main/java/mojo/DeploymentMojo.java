@@ -139,10 +139,11 @@ public class DeploymentMojo extends AbstractMojo {
 
         logger.info("Updated stack successfully, deployment complete");
 
-
         //Deal with substitutions
         Map<String, String> substitutionParams = new HashMap<>();
         Map<String, String> outputMessages = new HashMap<>();
+
+        substitutionParams.put(SubstitutionConstants.STAGE, stage);
 
         List<ExportInformation> exports = nimbusState.getExports().getOrDefault(stage, new LinkedList<>());
         for (ExportInformation export : exports) {
