@@ -103,18 +103,33 @@ public class DeploymentMojo extends AbstractMojo {
         FunctionHasher functionHasher = new FunctionHasher(FileService.addDirectorySeparatorIfNecessary(mavenProject.getBuild().getOutputDirectory()));
         Map<String, String> versionToReplace = new HashMap<>();
 
+        Set<FunctionFileToUpload> functionFilesToUpload = new HashSet<>();
         for (HandlerInformation handlerInformation : nimbusState.getHandlerFiles()) {
             String classPath = handlerInformation.getHandlerClassPath();
             String currentHash = functionHasher.determineFunctionHash(classPath);
-            String version = nimbusState.getCompilationTimeStamp() + "/" + "lambdacode";
-            DeployedFunctionInformation newFunction = new DeployedFunctionInformation(version, currentHash);
+
+            String fileInS3Path;
+            if (handlerInformation.getOverrideFileName() == null) {
+                // Use default file
+                fileInS3Path = nimbusState.getCompilationTimeStamp() + "/" + "lambdacode";
+                functionFilesToUpload.add(new FunctionFileToUpload(shadedJarPath, "lambdacode"));
+            } else {
+                fileInS3Path = nimbusState.getCompilationTimeStamp() + "/" + handlerInformation.getOverrideFileName();
+                functionFilesToUpload.add(new FunctionFileToUpload(handlerInformation.getOverrideFileName(), handlerInformation.getOverrideFileName()));
+            }
+
+            DeployedFunctionInformation newFunction = new DeployedFunctionInformation(fileInS3Path, currentHash);
             newFunctions.put(classPath, newFunction);
-            versionToReplace.put(handlerInformation.getReplacementVariable(), version);
+            versionToReplace.put(handlerInformation.getFileReplacementVariable(), fileInS3Path);
         }
 
-        logger.info("Uploading lambda file");
-        boolean uploadSuccessful = s3Service.uploadFileToCompilationFolder(lambdaBucketName.getResult(), shadedJarPath, "lambdacode");
-        if (!uploadSuccessful) throw new MojoFailureException("Failed uploading lambda code");
+        int i = 1;
+        for (FunctionFileToUpload functionFileToUpload : functionFilesToUpload) {
+            logger.info("Uploading lambda file " + i + " of " + functionFilesToUpload.size());
+            boolean uploadSuccessful = s3Service.uploadFileToCompilationFolder(lambdaBucketName.getResult(), functionFileToUpload.getSourceFilePath(), functionFileToUpload.getTargetFilePath());
+            if (!uploadSuccessful) throw new MojoFailureException("Failed uploading lambda code");
+            i++;
+        }
 
         persistedStateService.saveDeploymentInformation(newDeployment, stage);
         s3Service.uploadStringToS3(lambdaBucketName.getResult(), nimbusState.getCompilationTimeStamp(), S3_DEPLOYMENT_PATH);
