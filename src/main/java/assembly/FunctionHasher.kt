@@ -13,6 +13,9 @@ class FunctionHasher(private val targetDirectory: String) {
     private val alreadyProcessed: MutableMap<String, String?> = mutableMapOf()
 
     fun determineFunctionHash(handlerClassPath: String): String {
+        if (handlerClassPath.isBlank()) {
+            return ""
+        }
         return recursiveDetermineFunctionHash(handlerClassPath) ?: ""
     }
 
